@@ -4,6 +4,7 @@ import com.google.inject.Provides;
 import com.geoguessrrs.capture.CircleMask;
 import com.geoguessrrs.capture.CaptureOverlay;
 import com.geoguessrrs.capture.CaptureService;
+import com.geoguessrrs.scores.PersonalBestStore;
 import com.geoguessrrs.hint.NpcHintProvider;
 import com.geoguessrrs.hint.RegionHintProvider;
 import com.geoguessrrs.locations.GeoLocation;
@@ -21,6 +22,12 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import javax.inject.Inject;
@@ -44,7 +51,6 @@ import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
 import net.runelite.client.util.HotkeyListener;
-import net.runelite.client.RuneLiteProperties;
 
 @Slf4j
 @PluginDescriptor(
@@ -71,12 +77,18 @@ public class GeoguessrPlugin extends Plugin
 	@Inject private WorldMapGuessOverlay worldMapGuessOverlay;
 	@Inject private LocationDatabase locationDatabase;
 	@Inject private ScoreCalculator scoreCalculator;
+	@Inject private PersonalBestStore personalBestStore;
+	@Inject private DailyStore dailyStore;
 	@Inject private RegionHintProvider regionHintProvider;
 	@Inject private NpcHintProvider npcHintProvider;
+
+	// TODO: make this a config option once the server is deployed publicly
+	private static final String LEADERBOARD_URL = "http://localhost:3000";
 
 	private GeoguessrState state = GeoguessrState.IDLE;
 	private Round activeRound;
 	private GameMode activeGameMode = GameMode.HUNT;
+	private String lastPlayerName = "";
 
 	public GameMode getActiveGameMode() { return activeGameMode; }
 
@@ -90,6 +102,12 @@ public class GeoguessrPlugin extends Plugin
 	protected void startUp()
 	{
 		locationDatabase.load();
+		dailyStore.loadOrReset();
+		SwingUtilities.invokeLater(() ->
+		{
+			panel.updateDailyState(dailyStore.getAttemptsUsed(), dailyStore.isExhausted(), dailyStore.getAttempts());
+			panel.updatePersonalBests(personalBestStore.getAll());
+		});
 
 		overlayManager.add(compassOverlay);
 		overlayManager.add(resultOverlay);
@@ -105,7 +123,7 @@ public class GeoguessrPlugin extends Plugin
 			.build();
 		clientToolbar.addNavigation(navButton);
 
-		if (RuneLiteProperties.isDevelopmentMode())
+		if (DevMode.isEnabled())
 		{
 			overlayManager.add(captureOverlay);
 			captureHotkeyListener = new HotkeyListener(() -> config.captureHotkey())
@@ -124,7 +142,6 @@ public class GeoguessrPlugin extends Plugin
 		}
 
 		wirePanelCallbacks();
-		panel.setIdle();
 		log.info("GeoGuessr RS started");
 	}
 
@@ -138,7 +155,7 @@ public class GeoguessrPlugin extends Plugin
 		mouseManager.unregisterMouseListener(worldMapGuessOverlay.mouseListener);
 		clientToolbar.removeNavigation(navButton);
 
-		if (RuneLiteProperties.isDevelopmentMode())
+		if (DevMode.isEnabled())
 		{
 			overlayManager.remove(captureOverlay);
 			if (captureHotkeyListener != null)
@@ -161,7 +178,7 @@ public class GeoguessrPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		if (RuneLiteProperties.isDevelopmentMode() && config.captureMode())
+		if (DevMode.isEnabled() && config.captureMode())
 		{
 			captureOverlay.refreshPreview();
 		}
@@ -173,7 +190,8 @@ public class GeoguessrPlugin extends Plugin
 		if (event.getGameState() == GameState.LOGIN_SCREEN && state == GeoguessrState.ACTIVE)
 		{
 			setState(GeoguessrState.IDLE, null);
-			panel.setIdle();
+			SwingUtilities.invokeLater(() ->
+				panel.updateDailyState(dailyStore.getAttemptsUsed(), dailyStore.isExhausted(), dailyStore.getAttempts()));
 		}
 	}
 
@@ -183,7 +201,7 @@ public class GeoguessrPlugin extends Plugin
 
 	private void startRound()
 	{
-		if (state != GeoguessrState.IDLE)
+		if (state != GeoguessrState.IDLE || dailyStore.isExhausted())
 		{
 			return;
 		}
@@ -191,21 +209,26 @@ public class GeoguessrPlugin extends Plugin
 		worldMapGuessOverlay.setResult(null);
 		clearResultPin();
 		clearGuessPin();
-		Difficulty difficulty  = panel.getSelectedDifficulty();
-		activeGameMode        = panel.getSelectedGameMode();
 
-		GeoLocation location = locationDatabase.pickRandom();
+		activeGameMode = GameMode.HUNT;
+
+		GeoLocation location = dailyStore.getTodayLocation(locationDatabase.getAll(), dailyStore.getAttemptsUsed());
 		if (location == null)
 		{
-			log.warn("No locations available for difficulty {}", difficulty);
+			log.warn("No locations available");
 			return;
 		}
 
-		BufferedImage clueImage = cropForDifficulty(locationDatabase.loadClueImage(location), difficulty);
-		Round round = new Round(location, clueImage);
+		// All rounds start with the same tight crop; hints progressively reveal more
+		BufferedImage fullImage    = locationDatabase.loadClueImage(location);
+		BufferedImage initialImage = cropToRadius(fullImage, 26); // ~30% of 88px or 176px source
+		BufferedImage[] hintImages = buildHintImages(fullImage);
+
+		Round round = new Round(location, initialImage, hintImages);
 		setState(GeoguessrState.ACTIVE, round);
-		panel.startRound(round, config.maxHints(), activeGameMode == GameMode.HUNT);
-		log.debug("Started round: {} at ({},{},{})", location.getName(), location.getX(), location.getY(), location.getPlane());
+		panel.startRound(round, hintImages.length, true);
+		log.debug("Daily attempt {}/{}: location {}",
+			dailyStore.getAttemptsUsed() + 1, DailyStore.MAX_ATTEMPTS, location.getName());
 	}
 
 	private void revealHint(int index)
@@ -214,31 +237,14 @@ public class GeoguessrPlugin extends Plugin
 		{
 			return;
 		}
-
-		List<String> staticHints = activeRound.getLocation().getHints();
-		if (staticHints != null && index < staticHints.size())
+		BufferedImage[] hintImages = activeRound.getHintImages();
+		if (hintImages == null || index >= hintImages.length)
 		{
-			// Static hint from JSON — safe to show directly on EDT
-			String text = staticHints.get(index);
-			activeRound.useHint();
-			panel.showHint(index, text);
+			return;
 		}
-		else
-		{
-			// Dynamic fallback calls getWorldLocation() — must run on client thread
-			activeRound.useHint();
-			clientThread.invoke(() ->
-			{
-				String text;
-				switch (index % 2)
-				{
-					case 0: text = regionHintProvider.getHint(); break;
-					default: text = npcHintProvider.getHint(); break;
-				}
-				final String finalText = text;
-				SwingUtilities.invokeLater(() -> panel.showHint(index, finalText));
-			});
-		}
+		activeRound.useHint();
+		final BufferedImage img = hintImages[index];
+		SwingUtilities.invokeLater(() -> panel.showHint(index, img));
 	}
 
 	private void endRound(WorldPoint playerPos)
@@ -273,9 +279,23 @@ public class GeoguessrPlugin extends Plugin
 		guessPin.setName("Your guess");
 		worldMapPointManager.add(guessPin);
 
+		dailyStore.recordAttempt(loc.getName(), score, distance, activeRound.getElapsedSeconds());
+		boolean isNewPb = personalBestStore.update(
+			loc.getId(), loc.getName(), score, distance, activeRound.getElapsedSeconds());
+
+		if (dailyStore.isExhausted())
+		{
+			submitScoreToLeaderboard();
+		}
+
 		worldMapGuessOverlay.setResult(result);
 		resultOverlay.show(result);
-		panel.showResult(result);
+		panel.showResult(result, isNewPb);
+		SwingUtilities.invokeLater(() ->
+		{
+			panel.updateDailyState(dailyStore.getAttemptsUsed(), dailyStore.isExhausted(), dailyStore.getAttempts());
+			panel.updatePersonalBests(personalBestStore.getAll());
+		});
 		setState(GeoguessrState.RESULT, null);
 
 		log.debug("Round ended: {} pts, {} tiles, {}s", score, distance, result.getElapsedSeconds());
@@ -293,6 +313,7 @@ public class GeoguessrPlugin extends Plugin
 			Player player = client.getLocalPlayer();
 			if (player != null)
 			{
+				lastPlayerName = player.getName() != null ? player.getName() : "";
 				endRound(player.getWorldLocation());
 			}
 		});
@@ -321,7 +342,7 @@ public class GeoguessrPlugin extends Plugin
 		worldMapGuessOverlay.setState(newState, newState == GeoguessrState.ACTIVE ? this::submitGuess : null);
 
 		clearDebugTargetPin();
-		if (RuneLiteProperties.isDevelopmentMode() && newState == GeoguessrState.ACTIVE && round != null)
+		if (DevMode.isEnabled() && newState == GeoguessrState.ACTIVE && round != null)
 		{
 			WorldPoint target = new WorldPoint(
 				round.getLocation().getX(),
@@ -347,8 +368,18 @@ public class GeoguessrPlugin extends Plugin
 				() -> revealHint(1),
 				() -> revealHint(2)
 			),
-			this::submitHuntGuess
+			this::submitHuntGuess,
+			DevMode.isEnabled() ? this::debugResetDaily : null
 		);
+	}
+
+	private void debugResetDaily()
+	{
+		dailyStore.reset();
+		dailyStore.loadOrReset();
+		setState(GeoguessrState.IDLE, null);
+		SwingUtilities.invokeLater(() ->
+			panel.updateDailyState(dailyStore.getAttemptsUsed(), dailyStore.isExhausted(), dailyStore.getAttempts()));
 	}
 
 	private void clearResultPin()
@@ -376,6 +407,86 @@ public class GeoguessrPlugin extends Plugin
 			worldMapPointManager.remove(debugTargetPin);
 			debugTargetPin = null;
 		}
+	}
+
+	private void submitScoreToLeaderboard()
+	{
+		List<DailyStore.DailyAttempt> attempts = dailyStore.getAttempts();
+		int total = 0;
+		for (DailyStore.DailyAttempt a : attempts) total += a.getScore();
+		String date       = LocalDate.now().toString();
+		String playerName = lastPlayerName;
+
+		StringBuilder rounds = new StringBuilder("[");
+		for (int i = 0; i < attempts.size(); i++)
+		{
+			DailyStore.DailyAttempt a = attempts.get(i);
+			if (i > 0) rounds.append(',');
+			rounds.append(String.format(
+				"{\"locationName\":\"%s\",\"score\":%d,\"distance\":%d,\"elapsed\":%d}",
+				a.getLocationName().replace("\\", "\\\\").replace("\"", "\\\""),
+				a.getScore(), a.getDistance(), a.getElapsedSecs()
+			));
+		}
+		rounds.append(']');
+
+		String body = String.format(
+			"{\"playerName\":\"%s\",\"date\":\"%s\",\"totalScore\":%d,\"rounds\":%s}",
+			playerName.replace("\\", "\\\\").replace("\"", "\\\""),
+			date, total, rounds
+		);
+
+		Thread t = new Thread(() ->
+		{
+			try
+			{
+				HttpClient http = HttpClient.newHttpClient();
+				HttpRequest req = HttpRequest.newBuilder()
+					.uri(URI.create(LEADERBOARD_URL + "/api/score"))
+					.header("Content-Type", "application/json")
+					.POST(HttpRequest.BodyPublishers.ofString(body))
+					.timeout(Duration.ofSeconds(5))
+					.build();
+				HttpResponse<Void> resp = http.send(req, HttpResponse.BodyHandlers.discarding());
+				log.debug("Leaderboard submission: HTTP {}", resp.statusCode());
+			}
+			catch (Exception e)
+			{
+				log.debug("Leaderboard submission failed (server offline?): {}", e.getMessage());
+			}
+		}, "geoguessr-lb-submit");
+		t.setDaemon(true);
+		t.start();
+	}
+
+	private static BufferedImage cropToRadius(BufferedImage img, int radius)
+	{
+		if (img == null) return null;
+		int diam = radius * 2;
+		if (diam >= img.getWidth()) return CircleMask.apply(img);
+		int offset = (img.getWidth() - diam) / 2;
+		return CircleMask.apply(img.getSubimage(offset, offset, diam, diam));
+	}
+
+	/**
+	 * Returns 3 hint images with dramatically increasing zoom-out steps.
+	 * Radii are 50 %, 75 %, and 100 % of the image's max radius, with a floor
+	 * so they're always wider than the initial r=26 crop.
+	 *
+	 * For 88px source  (maxR=44): r=30, 38, 44  →  60, 76, 88 px crops
+	 * For 176px source (maxR=88): r=44, 66, 88  →  88, 132, 176 px crops (very dramatic)
+	 */
+	private static BufferedImage[] buildHintImages(BufferedImage fullImage)
+	{
+		if (fullImage == null) return new BufferedImage[3];
+		int maxR = fullImage.getWidth() / 2;
+		int r1   = Math.max(30, maxR / 2);
+		int r2   = Math.max(38, maxR * 3 / 4);
+		return new BufferedImage[]{
+			cropToRadius(fullImage, r1),
+			cropToRadius(fullImage, r2),
+			cropToRadius(fullImage, maxR)
+		};
 	}
 
 	private static BufferedImage cropForDifficulty(BufferedImage img, Difficulty difficulty)

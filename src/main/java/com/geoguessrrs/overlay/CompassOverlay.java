@@ -76,8 +76,9 @@ public class CompassOverlay extends Overlay
 		int dist = pos.distanceTo2D(target);
 		int dx = target.getX() - pos.getX();
 		int dy = target.getY() - pos.getY();
-		// getCameraYaw() = 0 when camera faces north, increases counter-clockwise (0-2047)
-		// (turning right toward east gives yaw ~1536, not ~512 — hence + not -)
+		// getCameraYaw() = 0 when facing north, increases COUNTER-clockwise (0-2047)
+		// (yaw 512 = west, 1024 = south, 1536 = east)
+		// Arrow template points right, so: final angle = atan2(-dy,dx) + yaw
 		double cameraYawRad = client.getCameraYaw() * 2.0 * Math.PI / 2048.0;
 		double angle = Math.atan2(-dy, dx) + cameraYawRad;
 

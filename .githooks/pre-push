@@ -19,7 +19,7 @@ for branch in $PROTECTED; do
         # Check whether capture references exist in the plugin file
         if grep -qE "captureOverlay|captureService|captureHotkeyListener" "$PLUGIN" 2>/dev/null; then
             # They exist — make sure they're all guarded
-            if ! grep -q "isDevelopmentMode" "$PLUGIN" 2>/dev/null; then
+            if ! grep -q "DevMode.isEnabled" "$PLUGIN" 2>/dev/null; then
                 echo ""
                 echo "  PUSH BLOCKED: capture-tool code in $PLUGIN"
                 echo "  is not gated behind RuneLiteProperties.isDevelopmentMode()."

@@ -42,8 +42,8 @@ ZOOM        = 2          # 4 px per game tile; each tile image = 256×256 px = 6
 CHUNK       = 64         # game tiles per tile-image edge at zoom 2
 PX_PER_TILE = 4          # pixels per game tile at zoom 2
 TILE_PX     = CHUNK * PX_PER_TILE   # 256 — tile image size in pixels
-RADIUS      = 44         # px radius for the circular crop (EASY difficulty = 11-tile radius)
-SIZE        = RADIUS * 2            # 88 — final image size
+RADIUS      = 88         # px radius for the circular crop (22-tile radius; hints can zoom out to full)
+SIZE        = RADIUS * 2            # 176 — final image size
 
 # Probe newest-first by actually fetching a known tile (Varrock West Bank, tx=49, ty=53).
 # Standard map versions use numeric suffix (_1, _2 …); letter suffixes are sailing/beta.
