@@ -44,6 +44,7 @@ import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
 import net.runelite.client.util.HotkeyListener;
+import net.runelite.client.RuneLiteProperties;
 
 @Slf4j
 @PluginDescriptor(
@@ -90,7 +91,6 @@ public class GeoguessrPlugin extends Plugin
 	{
 		locationDatabase.load();
 
-		overlayManager.add(captureOverlay);
 		overlayManager.add(compassOverlay);
 		overlayManager.add(resultOverlay);
 		overlayManager.add(targetTileOverlay);
@@ -105,18 +105,23 @@ public class GeoguessrPlugin extends Plugin
 			.build();
 		clientToolbar.addNavigation(navButton);
 
-		captureHotkeyListener = new HotkeyListener(() -> config.captureHotkey())
+		if (RuneLiteProperties.isDevelopmentMode())
 		{
-			@Override
-			public void hotkeyPressed()
+			overlayManager.add(captureOverlay);
+			captureHotkeyListener = new HotkeyListener(() -> config.captureHotkey())
 			{
-				if (config.captureMode())
+				@Override
+				public void hotkeyPressed()
 				{
-					captureService.captureAndPrompt();
+					if (config.captureMode())
+					{
+						captureService.captureAndPrompt();
+					}
 				}
-			}
-		};
-		keyManager.registerKeyListener(captureHotkeyListener);
+			};
+			keyManager.registerKeyListener(captureHotkeyListener);
+			log.info("GeoGuessr RS: capture mode available (dev build)");
+		}
 
 		wirePanelCallbacks();
 		panel.setIdle();
@@ -126,15 +131,22 @@ public class GeoguessrPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
-		overlayManager.remove(captureOverlay);
 		overlayManager.remove(compassOverlay);
 		overlayManager.remove(resultOverlay);
 		overlayManager.remove(targetTileOverlay);
 		overlayManager.remove(worldMapGuessOverlay);
 		mouseManager.unregisterMouseListener(worldMapGuessOverlay.mouseListener);
 		clientToolbar.removeNavigation(navButton);
-		keyManager.unregisterKeyListener(captureHotkeyListener);
-		captureService.shutdown();
+
+		if (RuneLiteProperties.isDevelopmentMode())
+		{
+			overlayManager.remove(captureOverlay);
+			if (captureHotkeyListener != null)
+			{
+				keyManager.unregisterKeyListener(captureHotkeyListener);
+			}
+			captureService.shutdown();
+		}
 		clearResultPin();
 		clearGuessPin();
 		clearDebugTargetPin();
@@ -149,11 +161,10 @@ public class GeoguessrPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		if (config.captureMode())
+		if (RuneLiteProperties.isDevelopmentMode() && config.captureMode())
 		{
 			captureOverlay.refreshPreview();
 		}
-
 	}
 
 	@Subscribe
@@ -309,9 +320,9 @@ public class GeoguessrPlugin extends Plugin
 		targetTileOverlay.setState(newState, round);
 		worldMapGuessOverlay.setState(newState, newState == GeoguessrState.ACTIVE ? this::submitGuess : null);
 
-		if (newState == GeoguessrState.ACTIVE && round != null)
+		clearDebugTargetPin();
+		if (RuneLiteProperties.isDevelopmentMode() && newState == GeoguessrState.ACTIVE && round != null)
 		{
-			clearDebugTargetPin();
 			WorldPoint target = new WorldPoint(
 				round.getLocation().getX(),
 				round.getLocation().getY(),
@@ -320,13 +331,10 @@ public class GeoguessrPlugin extends Plugin
 			debugTargetPin = new GeoguessrMapPoint(target, "[debug] " + round.getLocation().getName());
 			worldMapPointManager.add(debugTargetPin);
 		}
-		else
+
+		if (newState == GeoguessrState.RESULT)
 		{
-			clearDebugTargetPin();
-			if (newState == GeoguessrState.RESULT)
-			{
-				state = GeoguessrState.IDLE;
-			}
+			state = GeoguessrState.IDLE;
 		}
 	}
 
