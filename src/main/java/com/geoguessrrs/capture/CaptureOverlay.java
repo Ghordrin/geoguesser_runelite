@@ -6,7 +6,6 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import com.geoguessrrs.Difficulty;
-import com.geoguessrrs.GeoguessrConfig;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -34,9 +33,6 @@ public class CaptureOverlay extends Overlay
 	@Inject
 	private Client client;
 
-	@Inject
-	private GeoguessrConfig config;
-
 	private static final int ICON_REFRESH_TICKS = 10;
 
 	private BufferedImage cachedPreview;
@@ -45,10 +41,9 @@ public class CaptureOverlay extends Overlay
 
 
 	@Inject
-	CaptureOverlay(Client client, GeoguessrConfig config)
+	CaptureOverlay(Client client)
 	{
 		this.client = client;
-		this.config = config;
 		setPosition(OverlayPosition.TOP_RIGHT);
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 		setPriority(OverlayPriority.LOW);
@@ -124,12 +119,8 @@ public class CaptureOverlay extends Overlay
 
 	private int radiusForDifficulty()
 	{
-		switch (config.difficulty())
-		{
-			case EASY:  return RADIUS_EASY;
-			case HARD:  return RADIUS_HARD;
-			default:    return RADIUS_MEDIUM;
-		}
+		// Capture mode is a developer tool; always use EASY radius (widest view).
+		return RADIUS_EASY;
 	}
 
 	@Override

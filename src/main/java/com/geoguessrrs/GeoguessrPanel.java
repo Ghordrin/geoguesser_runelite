@@ -27,7 +27,15 @@ public class GeoguessrPanel extends PluginPanel
 {
 	private static final int CLUE_IMAGE_SIZE = 200;
 	private static final int MAX_HISTORY = 10;
-	private static final Color HINT_BUTTON_COLOR = new Color(0x4A90D9);
+	private static final Color HINT_BUTTON_COLOR  = new Color(0x4A90D9);
+	private static final Color TOGGLE_ACTIVE_BG   = new Color(0x2A5F8F);
+	private static final Color TOGGLE_INACTIVE_BG = new Color(0x3B3B3B);
+
+	// Mode / difficulty selectors
+	private GameMode selectedMode = GameMode.HUNT;
+	private Difficulty selectedDifficulty = Difficulty.RANDOM;
+	private final JButton[] modeButtons       = new JButton[GameMode.values().length];
+	private final JButton[] difficultyButtons = new JButton[Difficulty.values().length];
 
 	// Top controls
 	private final JButton startButton = new JButton("Start Round");
@@ -72,13 +80,28 @@ public class GeoguessrPanel extends PluginPanel
 
 	private JPanel buildTopPanel()
 	{
-		JPanel top = new JPanel(new BorderLayout(0, 4));
+		JPanel top = new JPanel(new BorderLayout(0, 6));
 		top.setBackground(ColorScheme.DARK_GRAY_COLOR);
 
 		JLabel title = new JLabel("GeoGuessr RS", SwingConstants.CENTER);
 		title.setFont(new Font("Arial", Font.BOLD, 14));
 		title.setForeground(Color.WHITE);
 		top.add(title, BorderLayout.NORTH);
+
+		JPanel selectors = new JPanel(new GridLayout(2, 1, 0, 4));
+		selectors.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		selectors.add(buildToggleRow("Mode", GameMode.values(), modeButtons,
+			i -> {
+				selectedMode = GameMode.values()[i];
+			}));
+		selectors.add(buildToggleRow("Diff", Difficulty.values(), difficultyButtons,
+			i -> {
+				selectedDifficulty = Difficulty.values()[i];
+			}));
+
+		// Pre-select defaults
+		selectToggle(modeButtons, selectedMode.ordinal());
+		selectToggle(difficultyButtons, selectedDifficulty.ordinal());
 
 		startButton.setBackground(new Color(0x3C8F3C));
 		startButton.setForeground(Color.WHITE);
@@ -103,13 +126,70 @@ public class GeoguessrPanel extends PluginPanel
 			}
 		});
 
-		JPanel buttons = new JPanel(new GridLayout(2, 1, 0, 4));
-		buttons.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		buttons.add(startButton);
-		buttons.add(guessButton);
-		top.add(buttons, BorderLayout.SOUTH);
+		JPanel actionButtons = new JPanel(new GridLayout(2, 1, 0, 4));
+		actionButtons.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		actionButtons.add(startButton);
+		actionButtons.add(guessButton);
+
+		JPanel middle = new JPanel(new BorderLayout(0, 4));
+		middle.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		middle.add(selectors, BorderLayout.NORTH);
+		middle.add(actionButtons, BorderLayout.SOUTH);
+		top.add(middle, BorderLayout.SOUTH);
 
 		return top;
+	}
+
+	/** Builds a labelled row of mutually exclusive toggle buttons. */
+	private JPanel buildToggleRow(String label, Object[] values, JButton[] buttons, java.util.function.IntConsumer onSelect)
+	{
+		JPanel row = new JPanel(new BorderLayout(4, 0));
+		row.setBackground(ColorScheme.DARK_GRAY_COLOR);
+
+		JLabel lbl = new JLabel(label + ":");
+		lbl.setForeground(Color.GRAY);
+		lbl.setFont(new Font("Arial", Font.PLAIN, 11));
+		lbl.setPreferredSize(new Dimension(30, 0));
+		row.add(lbl, BorderLayout.WEST);
+
+		JPanel btnPanel = new JPanel(new GridLayout(1, values.length, 2, 0));
+		btnPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		for (int i = 0; i < values.length; i++)
+		{
+			final int idx = i;
+			String text = values[i].toString();
+			// abbreviate for space: "RANDOM"→"Rand", "MEDIUM"→"Med", etc.
+			if (text.length() > 4)
+			{
+				text = text.substring(0, 1).toUpperCase() + text.substring(1, 4).toLowerCase();
+			}
+			else
+			{
+				text = text.substring(0, 1).toUpperCase() + text.substring(1).toLowerCase();
+			}
+			buttons[i] = new JButton(text);
+			buttons[i].setForeground(Color.WHITE);
+			buttons[i].setFocusPainted(false);
+			buttons[i].setFont(new Font("Arial", Font.PLAIN, 11));
+			buttons[i].setBackground(TOGGLE_INACTIVE_BG);
+			buttons[i].setBorder(BorderFactory.createEmptyBorder(3, 0, 3, 0));
+			buttons[i].addActionListener(e ->
+			{
+				selectToggle(buttons, idx);
+				onSelect.accept(idx);
+			});
+			btnPanel.add(buttons[i]);
+		}
+		row.add(btnPanel, BorderLayout.CENTER);
+		return row;
+	}
+
+	private void selectToggle(JButton[] buttons, int selectedIdx)
+	{
+		for (int i = 0; i < buttons.length; i++)
+		{
+			buttons[i].setBackground(i == selectedIdx ? TOGGLE_ACTIVE_BG : TOGGLE_INACTIVE_BG);
+		}
 	}
 
 	private JPanel buildCenterPanel()
@@ -186,6 +266,16 @@ public class GeoguessrPanel extends PluginPanel
 	// Public API called by GeoguessrPlugin
 	// -------------------------------------------------------------------------
 
+	public GameMode getSelectedGameMode()
+	{
+		return selectedMode;
+	}
+
+	public Difficulty getSelectedDifficulty()
+	{
+		return selectedDifficulty;
+	}
+
 	public void setCallbacks(Runnable onStart, List<Runnable> hintCallbacks, Runnable onGuess)
 	{
 		this.onStartRound = onStart;
@@ -210,7 +300,14 @@ public class GeoguessrPanel extends PluginPanel
 				btn.setEnabled(false);
 			}
 			scoreLabel.setText("Score: —");
+			setSelectorsEnabled(true);
 		});
+	}
+
+	private void setSelectorsEnabled(boolean enabled)
+	{
+		for (JButton btn : modeButtons)       btn.setEnabled(enabled);
+		for (JButton btn : difficultyButtons) btn.setEnabled(enabled);
 	}
 
 	public void startRound(Round round, int maxHints, boolean huntMode)
@@ -219,6 +316,7 @@ public class GeoguessrPanel extends PluginPanel
 		{
 			startButton.setEnabled(false);
 			startButton.setText("Round Active");
+			setSelectorsEnabled(false);
 			guessButton.setVisible(huntMode);
 			guessButton.setEnabled(true);
 			hintText.setText("");

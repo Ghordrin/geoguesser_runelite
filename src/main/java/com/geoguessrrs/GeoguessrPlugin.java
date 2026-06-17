@@ -75,6 +75,9 @@ public class GeoguessrPlugin extends Plugin
 
 	private GeoguessrState state = GeoguessrState.IDLE;
 	private Round activeRound;
+	private GameMode activeGameMode = GameMode.HUNT;
+
+	public GameMode getActiveGameMode() { return activeGameMode; }
 
 	private NavigationButton navButton;
 	private HotkeyListener captureHotkeyListener;
@@ -177,17 +180,20 @@ public class GeoguessrPlugin extends Plugin
 		worldMapGuessOverlay.setResult(null);
 		clearResultPin();
 		clearGuessPin();
+		Difficulty difficulty  = panel.getSelectedDifficulty();
+		activeGameMode        = panel.getSelectedGameMode();
+
 		GeoLocation location = locationDatabase.pickRandom();
 		if (location == null)
 		{
-			log.warn("No locations available for difficulty {}", config.difficulty());
+			log.warn("No locations available for difficulty {}", difficulty);
 			return;
 		}
 
-		BufferedImage clueImage = cropForDifficulty(locationDatabase.loadClueImage(location), config.difficulty());
+		BufferedImage clueImage = cropForDifficulty(locationDatabase.loadClueImage(location), difficulty);
 		Round round = new Round(location, clueImage);
 		setState(GeoguessrState.ACTIVE, round);
-		panel.startRound(round, config.maxHints(), config.gameMode() == GameMode.HUNT);
+		panel.startRound(round, config.maxHints(), activeGameMode == GameMode.HUNT);
 		log.debug("Started round: {} at ({},{},{})", location.getName(), location.getX(), location.getY(), location.getPlane());
 	}
 
