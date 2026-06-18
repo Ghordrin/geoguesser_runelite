@@ -5,10 +5,9 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.NPC;
-import net.runelite.api.Player;
 import net.runelite.api.coords.WorldPoint;
 
-public class NpcHintProvider implements HintProvider
+public class NpcHintProvider
 {
 	private static final int HINT_RADIUS = 15;
 
@@ -26,17 +25,5 @@ public class NpcHintProvider implements HintProvider
 			.limit(4)
 			.collect(Collectors.toList());
 		return nearbyNames.isEmpty() ? null : "Nearby: " + String.join(", ", nearbyNames) + ".";
-	}
-
-	@Override
-	public String getHint()
-	{
-		Player player = client.getLocalPlayer();
-		if (player == null)
-		{
-			return "No NPCs visible.";
-		}
-		String hint = getHintForLocation(player.getWorldLocation());
-		return hint != null ? hint : "No notable NPCs nearby.";
 	}
 }

@@ -2,6 +2,7 @@ package com.geoguessrrs.round;
 
 import com.geoguessrrs.locations.GeoLocation;
 import java.awt.image.BufferedImage;
+import java.time.Duration;
 import java.time.Instant;
 import lombok.Getter;
 
@@ -29,6 +30,6 @@ public class Round
 
 	public long getElapsedSeconds()
 	{
-		return Instant.now().getEpochSecond() - startTime.getEpochSecond();
+		return Duration.between(startTime, Instant.now()).toSeconds();
 	}
 }

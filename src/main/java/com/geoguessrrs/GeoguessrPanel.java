@@ -48,6 +48,10 @@ public class GeoguessrPanel extends PluginPanel
 	// Today's attempt log
 	private final JPanel attemptLogPanel = new JPanel();
 
+	// Daily leaderboard
+	private final JPanel  lbRowsPanel   = new JPanel();
+	private final JButton lbRefreshBtn  = new JButton("↻");
+
 	// Personal bests (collapsible)
 	private boolean  pbExpanded     = false;
 	private final JPanel  pbRowsPanel    = new JPanel();
@@ -56,8 +60,10 @@ public class GeoguessrPanel extends PluginPanel
 	// Callbacks wired by GeoguessrPlugin
 	private Runnable             onStartRound;
 	private Runnable             onGuess;
-	private Runnable             onDebugReset; // non-null only in dev mode
+	private Runnable             onDebugReset;
+	private Runnable             onRefreshLeaderboard;
 	private final List<Runnable> onHint = new ArrayList<>();
+	private int                  activeMaxHints = 0;
 
 	public GeoguessrPanel()
 	{
@@ -68,13 +74,18 @@ public class GeoguessrPanel extends PluginPanel
 		add(buildTopPanel(),    BorderLayout.NORTH);
 		add(buildCenterPanel(), BorderLayout.CENTER);
 
-		JPanel south = new JPanel(new BorderLayout(0, 4));
+		JPanel south = new JPanel();
+		south.setLayout(new javax.swing.BoxLayout(south, javax.swing.BoxLayout.Y_AXIS));
 		south.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		south.add(buildAttemptLogPanel(),    BorderLayout.NORTH);
-		south.add(buildPersonalBestsPanel(), BorderLayout.CENTER);
+		south.add(buildAttemptLogPanel());
+		south.add(javax.swing.Box.createVerticalStrut(6));
+		south.add(buildLeaderboardPanel());
+		south.add(javax.swing.Box.createVerticalStrut(6));
+		south.add(buildPersonalBestsPanel());
 		if (com.geoguessrrs.DevMode.isEnabled())
 		{
-			south.add(buildDebugPanel(), BorderLayout.SOUTH);
+			south.add(javax.swing.Box.createVerticalStrut(6));
+			south.add(buildDebugPanel());
 		}
 		add(south, BorderLayout.SOUTH);
 	}
@@ -204,6 +215,44 @@ public class GeoguessrPanel extends PluginPanel
 		return container;
 	}
 
+	private JPanel buildLeaderboardPanel()
+	{
+		JPanel wrapper = new JPanel(new BorderLayout(0, 2));
+		wrapper.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		wrapper.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+
+		JPanel header = new JPanel(new BorderLayout());
+		header.setBackground(ColorScheme.DARK_GRAY_COLOR);
+
+		JLabel title = new JLabel("Daily Leaderboard");
+		title.setForeground(Color.GRAY);
+		title.setFont(new Font("Arial", Font.PLAIN, 11));
+		header.add(title, BorderLayout.WEST);
+
+		lbRefreshBtn.setFont(new Font("Arial", Font.PLAIN, 10));
+		lbRefreshBtn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		lbRefreshBtn.setForeground(Color.LIGHT_GRAY);
+		lbRefreshBtn.setBorderPainted(false);
+		lbRefreshBtn.setFocusPainted(false);
+		lbRefreshBtn.setToolTipText("Refresh leaderboard");
+		lbRefreshBtn.addActionListener(e -> { if (onRefreshLeaderboard != null) onRefreshLeaderboard.run(); });
+		header.add(lbRefreshBtn, BorderLayout.EAST);
+
+		wrapper.add(header, BorderLayout.NORTH);
+
+		lbRowsPanel.setLayout(new GridLayout(0, 1, 0, 1));
+		lbRowsPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+
+		JLabel loading = new JLabel("Connecting to server…");
+		loading.setForeground(Color.GRAY);
+		loading.setFont(new Font("Arial", Font.ITALIC, 11));
+		loading.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 4));
+		lbRowsPanel.add(loading);
+
+		wrapper.add(lbRowsPanel, BorderLayout.CENTER);
+		return wrapper;
+	}
+
 	// -------------------------------------------------------------------------
 	// Public API called by GeoguessrPlugin
 	// -------------------------------------------------------------------------
@@ -222,13 +271,67 @@ public class GeoguessrPanel extends PluginPanel
 		return panel;
 	}
 
-	public void setCallbacks(Runnable onStart, List<Runnable> hintCallbacks, Runnable onGuess, Runnable onDebugReset)
+	public void setCallbacks(Runnable onStart, List<Runnable> hintCallbacks, Runnable onGuess,
+		Runnable onDebugReset, Runnable onRefreshLeaderboard)
 	{
-		this.onStartRound  = onStart;
-		this.onGuess       = onGuess;
-		this.onDebugReset  = onDebugReset;
+		this.onStartRound          = onStart;
+		this.onGuess               = onGuess;
+		this.onDebugReset          = onDebugReset;
+		this.onRefreshLeaderboard  = onRefreshLeaderboard;
 		this.onHint.clear();
 		this.onHint.addAll(hintCallbacks);
+	}
+
+	/**
+	 * Rebuilds the leaderboard rows.
+	 * @param top10     formatted rows for positions 1-10 (may be fewer if not enough submissions)
+	 * @param playerRow formatted row for the calling player if ranked outside top 10, else null
+	 */
+	public void updateLeaderboard(List<String> top10, String playerRow)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			lbRowsPanel.removeAll();
+
+			if (top10.isEmpty())
+			{
+				JLabel empty = new JLabel("No scores submitted yet today.");
+				empty.setForeground(Color.GRAY);
+				empty.setFont(new Font("Arial", Font.ITALIC, 11));
+				empty.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 4));
+				lbRowsPanel.add(empty);
+			}
+			else
+			{
+				for (String row : top10)
+				{
+					JLabel lbl = new JLabel(row);
+					lbl.setForeground(Color.LIGHT_GRAY);
+					lbl.setFont(new Font("Consolas", Font.PLAIN, 11));
+					lbl.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 4));
+					lbRowsPanel.add(lbl);
+				}
+
+				if (playerRow != null)
+				{
+					JLabel sep = new JLabel("· · ·");
+					sep.setForeground(new Color(0x444444));
+					sep.setFont(new Font("Arial", Font.PLAIN, 9));
+					sep.setHorizontalAlignment(SwingConstants.CENTER);
+					sep.setBorder(BorderFactory.createEmptyBorder(1, 6, 1, 4));
+					lbRowsPanel.add(sep);
+
+					JLabel you = new JLabel(playerRow);
+					you.setForeground(GOLD);
+					you.setFont(new Font("Consolas", Font.BOLD, 11));
+					you.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 4));
+					lbRowsPanel.add(you);
+				}
+			}
+
+			lbRowsPanel.revalidate();
+			lbRowsPanel.repaint();
+		});
 	}
 
 	/**
@@ -302,9 +405,10 @@ public class GeoguessrPanel extends PluginPanel
 				clueImageLabel.setText("No image");
 			}
 
+			activeMaxHints = maxHints;
 			for (int i = 0; i < hintButtons.length; i++)
 			{
-				hintButtons[i].setEnabled(i < maxHints);
+				hintButtons[i].setEnabled(i == 0 && maxHints > 0);
 				hintButtons[i].setText("Hint " + (i + 1));
 			}
 		});
@@ -318,6 +422,11 @@ public class GeoguessrPanel extends PluginPanel
 			{
 				hintButtons[index].setEnabled(false);
 				hintButtons[index].setText("+" + (index + 1));
+				int next = index + 1;
+				if (next < hintButtons.length && next < activeMaxHints)
+				{
+					hintButtons[next].setEnabled(true);
+				}
 			}
 			if (image != null)
 			{

@@ -5,8 +5,6 @@ import com.geoguessrrs.capture.CircleMask;
 import com.geoguessrrs.capture.CaptureOverlay;
 import com.geoguessrrs.capture.CaptureService;
 import com.geoguessrrs.scores.PersonalBestStore;
-import com.geoguessrrs.hint.NpcHintProvider;
-import com.geoguessrrs.hint.RegionHintProvider;
 import com.geoguessrrs.locations.GeoLocation;
 import com.geoguessrrs.locations.LocationDatabase;
 import com.geoguessrrs.overlay.CompassOverlay;
@@ -22,24 +20,33 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.LocalDate;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Player;
-import net.runelite.client.ui.overlay.worldmap.WorldMapPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.client.ui.overlay.worldmap.WorldMapPoint;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.input.KeyManager;
@@ -60,7 +67,7 @@ import net.runelite.client.util.HotkeyListener;
 )
 public class GeoguessrPlugin extends Plugin
 {
-@Inject private Client client;
+	@Inject private Client client;
 	@Inject private GeoguessrConfig config;
 	@Inject private GeoguessrPanel panel;
 	@Inject private OverlayManager overlayManager;
@@ -68,7 +75,7 @@ public class GeoguessrPlugin extends Plugin
 	@Inject private KeyManager keyManager;
 	@Inject private MouseManager mouseManager;
 	@Inject private WorldMapPointManager worldMapPointManager;
-	@Inject private net.runelite.client.callback.ClientThread clientThread;
+	@Inject private ClientThread clientThread;
 	@Inject private CaptureService captureService;
 	@Inject private CaptureOverlay captureOverlay;
 	@Inject private CompassOverlay compassOverlay;
@@ -79,14 +86,24 @@ public class GeoguessrPlugin extends Plugin
 	@Inject private ScoreCalculator scoreCalculator;
 	@Inject private PersonalBestStore personalBestStore;
 	@Inject private DailyStore dailyStore;
-	@Inject private RegionHintProvider regionHintProvider;
-	@Inject private NpcHintProvider npcHintProvider;
 
-	// TODO: make this a config option once the server is deployed publicly
-	private static final String LEADERBOARD_URL = "http://localhost:3000";
+	private static final String LEADERBOARD_URL =
+		System.getProperty("geoguessrrs.leaderboardUrl", "http://localhost:3000");
 
-	private GeoguessrState state = GeoguessrState.IDLE;
-	private Round activeRound;
+	private static final Gson GSON = new Gson();
+
+	// Daemon thread pool for leaderboard HTTP calls — avoids raw Thread creation per request.
+	private final ExecutorService httpExecutor = Executors.newCachedThreadPool(r ->
+	{
+		Thread t = new Thread(r, "geoguessr-http");
+		t.setDaemon(true);
+		return t;
+	});
+
+	// Volatile: written from the client thread or EDT, read from overlays on the render thread.
+	private volatile GeoguessrState state = GeoguessrState.IDLE;
+	private volatile Round activeRound;
+
 	private GameMode activeGameMode = GameMode.HUNT;
 	private String lastPlayerName = "";
 
@@ -107,6 +124,12 @@ public class GeoguessrPlugin extends Plugin
 		{
 			panel.updateDailyState(dailyStore.getAttemptsUsed(), dailyStore.isExhausted(), dailyStore.getAttempts());
 			panel.updatePersonalBests(personalBestStore.getAll());
+		});
+		clientThread.invoke(() ->
+		{
+			Player p = client.getLocalPlayer();
+			if (p != null && p.getName() != null) lastPlayerName = p.getName();
+			fetchLeaderboard();
 		});
 
 		overlayManager.add(compassOverlay);
@@ -154,6 +177,7 @@ public class GeoguessrPlugin extends Plugin
 		overlayManager.remove(worldMapGuessOverlay);
 		mouseManager.unregisterMouseListener(worldMapGuessOverlay.mouseListener);
 		clientToolbar.removeNavigation(navButton);
+		httpExecutor.shutdownNow();
 
 		if (DevMode.isEnabled())
 		{
@@ -187,7 +211,19 @@ public class GeoguessrPlugin extends Plugin
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged event)
 	{
-		if (event.getGameState() == GameState.LOGIN_SCREEN && state == GeoguessrState.ACTIVE)
+		if (event.getGameState() == GameState.LOGGED_IN)
+		{
+			clientThread.invoke(() ->
+			{
+				Player p = client.getLocalPlayer();
+				if (p != null && p.getName() != null)
+				{
+					lastPlayerName = p.getName();
+					fetchLeaderboard();
+				}
+			});
+		}
+		else if (event.getGameState() == GameState.LOGIN_SCREEN && state == GeoguessrState.ACTIVE)
 		{
 			setState(GeoguessrState.IDLE, null);
 			SwingUtilities.invokeLater(() ->
@@ -209,6 +245,7 @@ public class GeoguessrPlugin extends Plugin
 		worldMapGuessOverlay.setResult(null);
 		clearResultPin();
 		clearGuessPin();
+		resultOverlay.hide();
 
 		activeGameMode = GameMode.HUNT;
 
@@ -269,7 +306,7 @@ public class GeoguessrPlugin extends Plugin
 			score
 		);
 
-		// Pin both locations on the world map
+		// Pin both locations on the world map (must be on client thread)
 		clearResultPin();
 		clearGuessPin();
 		resultPin = new WorldMapPoint(target, buildTargetPinIcon());
@@ -288,15 +325,17 @@ public class GeoguessrPlugin extends Plugin
 			submitScoreToLeaderboard();
 		}
 
+		// Overlay fields are volatile — safe to write from the client thread.
 		worldMapGuessOverlay.setResult(result);
 		resultOverlay.show(result);
-		panel.showResult(result, isNewPb);
+
 		SwingUtilities.invokeLater(() ->
 		{
+			panel.showResult(result, isNewPb);
 			panel.updateDailyState(dailyStore.getAttemptsUsed(), dailyStore.isExhausted(), dailyStore.getAttempts());
 			panel.updatePersonalBests(personalBestStore.getAll());
 		});
-		setState(GeoguessrState.RESULT, null);
+		setState(GeoguessrState.IDLE, null);
 
 		log.debug("Round ended: {} pts, {} tiles, {}s", score, distance, result.getElapsedSeconds());
 	}
@@ -319,14 +358,14 @@ public class GeoguessrPlugin extends Plugin
 		});
 	}
 
-	/** Called from Classic Mode world-map click. */
+	/** Called from Classic Mode world-map click — dispatches to client thread for WorldMapPoint operations. */
 	private void submitGuess(WorldPoint guess)
 	{
 		if (state != GeoguessrState.ACTIVE || activeRound == null)
 		{
 			return;
 		}
-		endRound(guess);
+		clientThread.invoke(() -> endRound(guess));
 	}
 
 	// -------------------------------------------------------------------------
@@ -352,24 +391,22 @@ public class GeoguessrPlugin extends Plugin
 			debugTargetPin = new GeoguessrMapPoint(target, "[debug] " + round.getLocation().getName());
 			worldMapPointManager.add(debugTargetPin);
 		}
-
-		if (newState == GeoguessrState.RESULT)
-		{
-			state = GeoguessrState.IDLE;
-		}
 	}
 
 	private void wirePanelCallbacks()
 	{
+		List<Runnable> hintCallbacks = new ArrayList<>();
+		for (int i = 0; i < 3; i++)
+		{
+			final int idx = i;
+			hintCallbacks.add(() -> revealHint(idx));
+		}
 		panel.setCallbacks(
 			this::startRound,
-			Arrays.asList(
-				() -> revealHint(0),
-				() -> revealHint(1),
-				() -> revealHint(2)
-			),
+			hintCallbacks,
 			this::submitHuntGuess,
-			DevMode.isEnabled() ? this::debugResetDaily : null
+			DevMode.isEnabled() ? this::debugResetDaily : null,
+			this::fetchLeaderboard
 		);
 	}
 
@@ -414,29 +451,28 @@ public class GeoguessrPlugin extends Plugin
 		List<DailyStore.DailyAttempt> attempts = dailyStore.getAttempts();
 		int total = 0;
 		for (DailyStore.DailyAttempt a : attempts) total += a.getScore();
-		String date       = LocalDate.now().toString();
-		String playerName = lastPlayerName;
 
-		StringBuilder rounds = new StringBuilder("[");
-		for (int i = 0; i < attempts.size(); i++)
+		JsonArray roundsArr = new JsonArray();
+		for (DailyStore.DailyAttempt a : attempts)
 		{
-			DailyStore.DailyAttempt a = attempts.get(i);
-			if (i > 0) rounds.append(',');
-			rounds.append(String.format(
-				"{\"locationName\":\"%s\",\"score\":%d,\"distance\":%d,\"elapsed\":%d}",
-				a.getLocationName().replace("\\", "\\\\").replace("\"", "\\\""),
-				a.getScore(), a.getDistance(), a.getElapsedSecs()
-			));
+			JsonObject r = new JsonObject();
+			r.addProperty("locationName", a.getLocationName());
+			r.addProperty("score", a.getScore());
+			r.addProperty("distance", a.getDistance());
+			r.addProperty("elapsed", a.getElapsedSecs());
+			roundsArr.add(r);
 		}
-		rounds.append(']');
 
-		String body = String.format(
-			"{\"playerName\":\"%s\",\"date\":\"%s\",\"totalScore\":%d,\"rounds\":%s}",
-			playerName.replace("\\", "\\\\").replace("\"", "\\\""),
-			date, total, rounds
-		);
+		JsonObject payload = new JsonObject();
+		payload.addProperty("playerName", lastPlayerName);
+		payload.addProperty("date", LocalDate.now().toString());
+		payload.addProperty("totalScore", total);
+		payload.add("rounds", roundsArr);
+		payload.addProperty("clanHash", hashClanId(config.clanName(), config.clanPasskey()));
 
-		Thread t = new Thread(() ->
+		final String body = GSON.toJson(payload);
+
+		httpExecutor.submit(() ->
 		{
 			try
 			{
@@ -449,14 +485,102 @@ public class GeoguessrPlugin extends Plugin
 					.build();
 				HttpResponse<Void> resp = http.send(req, HttpResponse.BodyHandlers.discarding());
 				log.debug("Leaderboard submission: HTTP {}", resp.statusCode());
+				if (resp.statusCode() == 200) fetchLeaderboard();
 			}
 			catch (Exception e)
 			{
 				log.debug("Leaderboard submission failed (server offline?): {}", e.getMessage());
 			}
-		}, "geoguessr-lb-submit");
-		t.setDaemon(true);
-		t.start();
+		});
+	}
+
+	// ── Inner types for Gson leaderboard deserialization ─────────────────────
+
+	private static class LbEntry
+	{
+		int rank;
+		String playerName;
+		int totalScore;
+	}
+
+	private static class LbResponse
+	{
+		java.util.List<LbEntry> top10;
+		LbEntry playerEntry;
+	}
+
+	// ── Leaderboard fetch ─────────────────────────────────────────────────────
+
+	private void fetchLeaderboard()
+	{
+		String date = LocalDate.now().toString();
+		String playerParam = "";
+		if (!lastPlayerName.isEmpty())
+		{
+			playerParam = "&player=" + URLEncoder.encode(lastPlayerName, StandardCharsets.UTF_8);
+		}
+		String clanHash  = hashClanId(config.clanName(), config.clanPasskey());
+		String clanParam = clanHash.isEmpty() ? "" : "&clan=" + clanHash;
+		final String url = LEADERBOARD_URL + "/api/leaderboard/daily/summary?date=" + date + playerParam + clanParam;
+
+		httpExecutor.submit(() ->
+		{
+			try
+			{
+				HttpClient http = HttpClient.newHttpClient();
+				HttpRequest req = HttpRequest.newBuilder()
+					.uri(URI.create(url))
+					.GET()
+					.timeout(Duration.ofSeconds(5))
+					.build();
+				HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+
+				if (resp.statusCode() != 200) return;
+
+				LbResponse data = GSON.fromJson(resp.body(), LbResponse.class);
+				if (data == null || data.top10 == null) return;
+
+				List<String> rows = new ArrayList<>();
+				for (LbEntry e : data.top10)
+				{
+					rows.add(String.format("#%-2d %-12s %,d", e.rank, e.playerName, e.totalScore));
+				}
+
+				String playerRow = null;
+				if (data.playerEntry != null)
+				{
+					playerRow = String.format("#%-2d %-12s %,d",
+						data.playerEntry.rank, data.playerEntry.playerName, data.playerEntry.totalScore);
+				}
+
+				final List<String> finalRows = rows;
+				final String finalPlayer = playerRow;
+				SwingUtilities.invokeLater(() -> panel.updateLeaderboard(finalRows, finalPlayer));
+			}
+			catch (Exception e)
+			{
+				log.debug("Leaderboard fetch failed (server offline?): {}", e.getMessage());
+			}
+		});
+	}
+
+	private static String hashClanId(String clanName, String clanPasskey)
+	{
+		String name   = clanName    == null ? "" : clanName.trim();
+		String secret = clanPasskey == null ? "" : clanPasskey.trim();
+		if (name.isEmpty() || secret.isEmpty()) return "";
+		try
+		{
+			MessageDigest md = MessageDigest.getInstance("SHA-256");
+			byte[] hash = md.digest((name.toLowerCase() + ":" + secret).getBytes(StandardCharsets.UTF_8));
+			StringBuilder sb = new StringBuilder(64);
+			for (byte b : hash) sb.append(String.format("%02x", b));
+			return sb.toString();
+		}
+		catch (java.security.NoSuchAlgorithmException e)
+		{
+			return "";
+		}
 	}
 
 	private static BufferedImage cropToRadius(BufferedImage img, int radius)
@@ -487,22 +611,6 @@ public class GeoguessrPlugin extends Plugin
 			cropToRadius(fullImage, r2),
 			cropToRadius(fullImage, maxR)
 		};
-	}
-
-	private static BufferedImage cropForDifficulty(BufferedImage img, Difficulty difficulty)
-	{
-		if (img == null) return null;
-		int cropRadius;
-		switch (difficulty)
-		{
-			case MEDIUM: cropRadius = 36; break;
-			case HARD:   cropRadius = 26; break;
-			default:     return img;
-		}
-		int cropDiam = cropRadius * 2;
-		int offset = (img.getWidth() - cropDiam) / 2;
-		if (offset <= 0) return img;
-		return CircleMask.apply(img.getSubimage(offset, offset, cropDiam, cropDiam));
 	}
 
 	private static BufferedImage buildNavIcon()

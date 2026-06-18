@@ -4,10 +4,9 @@ import java.util.HashMap;
 import java.util.Map;
 import javax.inject.Inject;
 import net.runelite.api.Client;
-import net.runelite.api.Player;
 import net.runelite.api.coords.WorldPoint;
 
-public class RegionHintProvider implements HintProvider
+public class RegionHintProvider
 {
 	// regionId = (x >> 6) * 256 + (y >> 6)
 	private static final Map<Integer, String> REGION_NAMES = new HashMap<>();
@@ -332,11 +331,4 @@ public class RegionHintProvider implements HintProvider
 		return null;
 	}
 
-	@Override
-	public String getHint()
-	{
-		Player player = client.getLocalPlayer();
-		if (player == null) return null;
-		return getHintForLocation(player.getWorldLocation());
-	}
 }

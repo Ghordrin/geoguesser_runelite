@@ -24,6 +24,29 @@ public interface GeoguessrConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "clanName",
+		name = "Clan Name",
+		description = "Your clan's unique name. Combined with the clan secret to identify your group.",
+		position = 1
+	)
+	default String clanName()
+	{
+		return "";
+	}
+
+	@ConfigItem(
+		keyName = "clanPasskey",
+		name = "Clan Secret",
+		description = "Private passkey for your clan. Only players with the same clan name AND secret share a leaderboard.",
+		position = 2,
+		secret = true
+	)
+	default String clanPasskey()
+	{
+		return "";
+	}
+
+	@ConfigItem(
 		keyName = "showDistance",
 		name = "Show Distance (Hunt)",
 		description = "Show tile distance in the compass overlay.",

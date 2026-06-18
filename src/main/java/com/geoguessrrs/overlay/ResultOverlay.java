@@ -16,10 +16,11 @@ public class ResultOverlay extends Overlay
 	private static final int PANEL_WIDTH = 200;
 	private static final int PANEL_HEIGHT = 90;
 	private static final Color BG_COLOR = new Color(0, 0, 0, 200);
-
-	private RoundResult result;
-	private long shownAt;
 	private static final long SHOW_DURATION_MS = 8000;
+
+	// Written from the client thread, read from the render thread — must be volatile.
+	private volatile RoundResult result;
+	private volatile long shownAt;
 
 	public ResultOverlay()
 	{
@@ -30,7 +31,7 @@ public class ResultOverlay extends Overlay
 
 	public void show(RoundResult result)
 	{
-		this.result = result;
+		this.result  = result;
 		this.shownAt = System.currentTimeMillis();
 	}
 

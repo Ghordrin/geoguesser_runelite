@@ -33,8 +33,9 @@ public class CompassOverlay extends Overlay
 	private final Client client;
 	private final GeoguessrPlugin plugin;
 
-	private GeoguessrState state = GeoguessrState.IDLE;
-	private Round activeRound;
+	// Written from the client thread, read from the render thread — must be volatile.
+	private volatile GeoguessrState state = GeoguessrState.IDLE;
+	private volatile Round activeRound;
 
 	@Inject
 	CompassOverlay(Client client, GeoguessrPlugin plugin)

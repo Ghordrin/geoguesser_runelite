@@ -37,9 +37,10 @@ public class WorldMapGuessOverlay extends Overlay
 	private final Client client;
 	private final GeoguessrPlugin plugin;
 
-	private GeoguessrState state = GeoguessrState.IDLE;
-	private Consumer<WorldPoint> onGuess;
-	private RoundResult lastResult;
+	// Written from the client thread, read from the render thread and EDT — must be volatile.
+	private volatile GeoguessrState state = GeoguessrState.IDLE;
+	private volatile Consumer<WorldPoint> onGuess;
+	private volatile RoundResult lastResult;
 
 	@Inject
 	WorldMapGuessOverlay(Client client, GeoguessrPlugin plugin)
