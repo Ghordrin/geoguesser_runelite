@@ -268,7 +268,7 @@ public class GeoguessrPlugin extends Plugin
 
 		Round round = new Round(location, initialImage, hintImages);
 		setState(GeoguessrState.ACTIVE, round);
-		panel.startRound(round, hintImages.length, true);
+		panel.startRound(round, hintImages.length);
 		log.debug("Daily attempt {}/{}: location {}",
 			dailyStore.getAttemptsUsed() + 1, DailyStore.MAX_ATTEMPTS, location.getName());
 	}
