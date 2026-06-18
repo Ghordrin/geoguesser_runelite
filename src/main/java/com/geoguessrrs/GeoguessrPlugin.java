@@ -50,7 +50,6 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.input.KeyManager;
-import net.runelite.client.input.MouseManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
@@ -73,7 +72,6 @@ public class GeoguessrPlugin extends Plugin
 	@Inject private OverlayManager overlayManager;
 	@Inject private ClientToolbar clientToolbar;
 	@Inject private KeyManager keyManager;
-	@Inject private MouseManager mouseManager;
 	@Inject private WorldMapPointManager worldMapPointManager;
 	@Inject private ClientThread clientThread;
 	@Inject private CaptureService captureService;
@@ -136,7 +134,6 @@ public class GeoguessrPlugin extends Plugin
 		overlayManager.add(resultOverlay);
 		overlayManager.add(targetTileOverlay);
 		overlayManager.add(worldMapGuessOverlay);
-		mouseManager.registerMouseListener(worldMapGuessOverlay.mouseListener);
 
 		navButton = NavigationButton.builder()
 			.tooltip("GeoGuessr RS")
@@ -175,7 +172,6 @@ public class GeoguessrPlugin extends Plugin
 		overlayManager.remove(resultOverlay);
 		overlayManager.remove(targetTileOverlay);
 		overlayManager.remove(worldMapGuessOverlay);
-		mouseManager.unregisterMouseListener(worldMapGuessOverlay.mouseListener);
 		clientToolbar.removeNavigation(navButton);
 		httpExecutor.shutdownNow();
 
@@ -372,16 +368,6 @@ public class GeoguessrPlugin extends Plugin
 		});
 	}
 
-	/** Called from Classic Mode world-map click — dispatches to client thread for WorldMapPoint operations. */
-	private void submitGuess(WorldPoint guess)
-	{
-		if (state != GeoguessrState.ACTIVE || activeRound == null)
-		{
-			return;
-		}
-		clientThread.invoke(() -> endRound(guess));
-	}
-
 	// -------------------------------------------------------------------------
 	// Helpers
 	// -------------------------------------------------------------------------
@@ -392,7 +378,6 @@ public class GeoguessrPlugin extends Plugin
 		activeRound = round;
 		compassOverlay.setState(newState, round);
 		targetTileOverlay.setState(newState, round);
-		worldMapGuessOverlay.setState(newState, newState == GeoguessrState.ACTIVE ? this::submitGuess : null);
 
 		clearDebugTargetPin();
 		if (DevMode.isEnabled() && newState == GeoguessrState.ACTIVE && round != null)

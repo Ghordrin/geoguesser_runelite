@@ -17,7 +17,7 @@ public interface GeoguessrConfig extends Config
 		description = "Maximum hints available per round.",
 		position = 0
 	)
-	@Range(min = 0, max = 5)
+	@Range(min = 0, max = 3)
 	default int maxHints()
 	{
 		return 3;

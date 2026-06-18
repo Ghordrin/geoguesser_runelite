@@ -1,8 +1,5 @@
 package com.geoguessrrs.overlay;
 
-import com.geoguessrrs.GeoguessrState;
-import com.geoguessrrs.GameMode;
-import com.geoguessrrs.GeoguessrPlugin;
 import com.geoguessrrs.round.RoundResult;
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -14,7 +11,6 @@ import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.event.MouseEvent;
 import java.util.List;
-import java.util.function.Consumer;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.Point;
@@ -27,36 +23,20 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.OverlayPriority;
 
-/**
- * Intercepts world-map mouse clicks in Classic Mode to record the player's guess.
- * Also draws a small "Click to guess!" banner while the world map is open.
- *
- * NOTE: The world-map widget lookup and coordinate conversion need in-game verification.
- */
 public class WorldMapGuessOverlay extends Overlay
 {
 	private final Client client;
-	private final GeoguessrPlugin plugin;
 
 	// Written from the client thread, read from the render thread and EDT — must be volatile.
-	private volatile GeoguessrState state = GeoguessrState.IDLE;
-	private volatile Consumer<WorldPoint> onGuess;
 	private volatile RoundResult lastResult;
 
 	@Inject
-	WorldMapGuessOverlay(Client client, GeoguessrPlugin plugin)
+	WorldMapGuessOverlay(Client client)
 	{
 		this.client = client;
-		this.plugin = plugin;
 		setPosition(OverlayPosition.DYNAMIC);
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 		setPriority(OverlayPriority.HIGH);
-	}
-
-	public void setState(GeoguessrState state, Consumer<WorldPoint> onGuess)
-	{
-		this.state = state;
-		this.onGuess = onGuess;
 	}
 
 	public void setResult(RoundResult result)
@@ -70,17 +50,6 @@ public class WorldMapGuessOverlay extends Overlay
 		@Override
 		public MouseEvent mouseClicked(MouseEvent e)
 		{
-			if (state != GeoguessrState.ACTIVE || plugin.getActiveGameMode() != GameMode.CLASSIC)
-			{
-				return e;
-			}
-
-			WorldPoint guess = canvasToWorldPoint(e.getX(), e.getY());
-			if (guess != null && onGuess != null)
-			{
-				onGuess.accept(guess);
-				return null; // consume
-			}
 			return e;
 		}
 	};
@@ -96,18 +65,6 @@ public class WorldMapGuessOverlay extends Overlay
 
 		graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 		graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-
-		// Active: "click to guess" banner
-		if (state == GeoguessrState.ACTIVE && plugin.getActiveGameMode() == GameMode.CLASSIC)
-		{
-			int bx = mapBounds.x + mapBounds.width / 2 - 90;
-			int by = mapBounds.y + 10;
-			graphics.setColor(new Color(0, 0, 0, 180));
-			graphics.fillRoundRect(bx, by, 180, 24, 6, 6);
-			graphics.setColor(Color.YELLOW);
-			graphics.setFont(new Font("Arial", Font.BOLD, 12));
-			graphics.drawString("Click to place your guess!", bx + 8, by + 16);
-		}
 
 		// Result: movement path + line from guess to target
 		if (lastResult != null)
@@ -204,35 +161,5 @@ public class WorldMapGuessOverlay extends Overlay
 		int x = canvasCenterX + Math.round((wp.getX() - mapCenter.getX()) * zoom);
 		int y = canvasCenterY - Math.round((wp.getY() - mapCenter.getY()) * zoom);
 		return new java.awt.Point(x, y);
-	}
-
-	private WorldPoint canvasToWorldPoint(int canvasX, int canvasY)
-	{
-		Rectangle mapBounds = getMapWidgetBounds();
-		if (mapBounds == null || !mapBounds.contains(canvasX, canvasY))
-		{
-			return null;
-		}
-
-		WorldMap worldMap = client.getWorldMap();
-		if (worldMap == null)
-		{
-			return null;
-		}
-
-		Point mapCenter = worldMap.getWorldMapPosition();
-		float zoom = worldMap.getWorldMapZoom();
-
-		int canvasCenterX = mapBounds.x + mapBounds.width / 2;
-		int canvasCenterY = mapBounds.y + mapBounds.height / 2;
-
-		int tileOffsetX = Math.round((canvasX - canvasCenterX) / zoom);
-		int tileOffsetY = Math.round(-(canvasY - canvasCenterY) / zoom);
-
-		return new WorldPoint(
-			mapCenter.getX() + tileOffsetX,
-			mapCenter.getY() + tileOffsetY,
-			0
-		);
 	}
 }
