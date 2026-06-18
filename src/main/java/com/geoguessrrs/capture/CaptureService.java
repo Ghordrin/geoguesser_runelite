@@ -2,8 +2,6 @@ package com.geoguessrrs.capture;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import com.geoguessrrs.hint.NpcHintProvider;
-import com.geoguessrrs.hint.RegionHintProvider;
 import com.geoguessrrs.locations.GeoLocation;
 import com.geoguessrrs.locations.LocationDatabase;
 import java.awt.Graphics2D;
@@ -17,9 +15,7 @@ import java.io.OutputStreamWriter;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import javax.imageio.ImageIO;
@@ -28,11 +24,8 @@ import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
-import net.runelite.api.GameObject;
-import net.runelite.api.ObjectComposition;
 import net.runelite.api.Player;
 import net.runelite.api.SpritePixels;
-import net.runelite.api.Tile;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.RuneLite;
@@ -56,12 +49,6 @@ public class CaptureService
 	private ClientThread clientThread;
 
 	@Inject
-	private NpcHintProvider npcHintProvider;
-
-	@Inject
-	private RegionHintProvider regionHintProvider;
-
-	@Inject
 	private LocationDatabase locationDatabase;
 
 	@Inject
@@ -83,120 +70,21 @@ public class CaptureService
 			if (pos == null || image == null)
 			{
 				log.warn("Capture failed: pos={} image={} — try moving to a loaded area", pos, image);
-				SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(
+				SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
 					null,
 					"Capture failed — the minimap scene wasn't available.\nMake sure you're fully loaded in-game.",
 					"Capture Failed",
-					javax.swing.JOptionPane.WARNING_MESSAGE));
+					JOptionPane.WARNING_MESSAGE));
 				return;
 			}
 
-			List<String> autoHints = generateHints(pos);
-			SwingUtilities.invokeLater(() -> promptAndSave(pos, image, autoHints));
+			final WorldPoint finalPos = pos;
+			final BufferedImage finalImage = image;
+			SwingUtilities.invokeLater(() -> promptAndSave(finalPos, finalImage));
 		});
 	}
 
-	private List<String> generateHints(WorldPoint pos)
-	{
-		List<String> hints = new ArrayList<>();
-
-		String regionHint = regionHintProvider.getHintForLocation(pos);
-		if (regionHint != null)
-		{
-			hints.add(regionHint);
-		}
-
-		String npcHint = npcHintProvider.getHintForLocation(pos);
-		if (npcHint != null)
-		{
-			hints.add(npcHint);
-		}
-
-		String landmarkHint = buildLandmarkHint();
-		if (landmarkHint != null)
-		{
-			hints.add(landmarkHint);
-		}
-
-		return hints;
-	}
-
-	/** Scans nearby scene objects for notable landmarks and structures. */
-	private String buildLandmarkHint()
-	{
-		Tile[][][] tiles = client.getScene().getTiles();
-		if (tiles == null) return null;
-		int plane = client.getTopLevelWorldView().getPlane();
-		Set<String> labels = new LinkedHashSet<>();
-
-		for (int tx = 0; tx < 104; tx++)
-		{
-			for (int ty = 0; ty < 104; ty++)
-			{
-				Tile tile = tiles[plane][tx][ty];
-				if (tile == null) continue;
-				for (GameObject obj : tile.getGameObjects())
-				{
-					if (obj == null) continue;
-					String label = landmarkLabel(obj.getId());
-					if (label != null) labels.add(label);
-				}
-			}
-		}
-
-		if (labels.isEmpty()) return null;
-		return "Visible: " + String.join(", ", labels) + ".";
-	}
-
-	private String landmarkLabel(int objectId)
-	{
-		ObjectComposition def = client.getObjectDefinition(objectId);
-		if (def == null) return null;
-		if (def.getImpostorIds() != null)
-		{
-			ObjectComposition imp = def.getImpostor();
-			if (imp != null) def = imp;
-		}
-		String n = def.getName();
-		if (n == null || n.isEmpty() || n.equals("null")) return null;
-		String lower = n.toLowerCase().trim();
-
-		// Functional landmarks
-		if (lower.contains("bank booth") || lower.contains("bank chest") || lower.contains("bank counter"))
-			return "Bank";
-		if (lower.contains("grand exchange"))    return "Grand Exchange";
-		if (lower.contains("furnace"))           return "Furnace";
-		if (lower.contains("altar"))             return "Prayer Altar";
-		if (lower.contains("anvil"))             return "Anvil";
-		if (lower.contains("fairy ring"))        return "Fairy Ring";
-		if (lower.contains("spinning wheel"))    return "Spinning Wheel";
-		if (lower.contains("loom"))              return "Loom";
-		if (lower.equals("range") || lower.contains("cooking range")) return "Cooking Range";
-		if (lower.contains("general store"))     return "General Store";
-		if (lower.contains("spirit tree"))       return "Spirit Tree";
-		if (lower.equals("portal") || lower.contains("house portal")) return "House Portal";
-		if (lower.contains("portal nexus"))      return "Portal Nexus";
-		if (lower.contains("slayer tower"))      return "Slayer Tower";
-		if (lower.contains("tanning rack"))      return "Tanner";
-
-		// Location-specific named objects — anything whose name contains a place name
-		String[] placeKeywords = {
-			"lumbridge", "varrock", "falador", "edgeville", "camelot", "ardougne",
-			"yanille", "al kharid", "seers", "barbarian", "rellekka", "fremennik",
-			"karamja", "brimhaven", "morytania", "canifis", "slayer", "kourend",
-			"hosidius", "shayzien", "prifddinas", "taverley", "burthorpe",
-			"port sarim", "draynor", "wizard", "legends", "champions", "gnome",
-			"agility", "duel arena", "pest control", "castle wars"
-		};
-		for (String kw : placeKeywords)
-		{
-			if (lower.contains(kw)) return n; // return the actual object name as the hint
-		}
-
-		return null;
-	}
-
-	private void promptAndSave(WorldPoint pos, BufferedImage image, List<String> autoHints)
+	private void promptAndSave(WorldPoint pos, BufferedImage image)
 	{
 		String name = (String) JOptionPane.showInputDialog(
 			null,
@@ -217,7 +105,7 @@ public class CaptureService
 		{
 			try
 			{
-				save(pos, image, name.trim(), autoHints);
+				save(pos, image, name.trim());
 			}
 			catch (IOException e)
 			{
@@ -279,21 +167,19 @@ public class CaptureService
 		return CircleMask.apply(cropped);
 	}
 
-	private void save(WorldPoint pos, BufferedImage image, String name, List<String> hints) throws IOException
+	private void save(WorldPoint pos, BufferedImage image, String name) throws IOException
 	{
 		CAPTURE_DIR.mkdirs();
 		String filename = pos.getX() + "_" + pos.getY() + "_" + pos.getPlane() + ".png";
 		ImageIO.write(image, "PNG", new File(CAPTURE_DIR, filename));
 
 		GeoLocation entry = new GeoLocation();
-		// Use coordinate-based ID to avoid collisions from normalised names
 		entry.setId(pos.getX() + "_" + pos.getY() + "_" + pos.getPlane());
 		entry.setName(name);
 		entry.setX(pos.getX());
 		entry.setY(pos.getY());
 		entry.setPlane(pos.getPlane());
 		entry.setImage(filename);
-		entry.setHints(hints);
 		entry.setTags(new ArrayList<>());
 
 		appendCapture(entry);
@@ -327,11 +213,11 @@ public class CaptureService
 				&& existing.getPlane() == entry.getPlane())
 			{
 				log.info("Duplicate location at ({},{},{}), skipping", entry.getX(), entry.getY(), entry.getPlane());
-				SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(
+				SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
 					null,
 					"A capture already exists at this exact tile (" + entry.getX() + ", " + entry.getY() + ").\nSkipping.",
 					"Duplicate Skipped",
-					javax.swing.JOptionPane.WARNING_MESSAGE));
+					JOptionPane.WARNING_MESSAGE));
 				return;
 			}
 		}

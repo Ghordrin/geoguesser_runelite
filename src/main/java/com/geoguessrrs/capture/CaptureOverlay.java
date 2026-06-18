@@ -25,8 +25,7 @@ public class CaptureOverlay extends Overlay
 	private static final int SCENE_SIZE      = SCENE_TILES * PIXELS_PER_TILE; // 416
 	private static final int CAPTURE_RADIUS  = 44;
 
-	@Inject
-	private Client client;
+	private final Client client;
 
 	private static final int ICON_REFRESH_TICKS = 10;
 

@@ -2,8 +2,7 @@ package com.geoguessrrs;
 
 public enum GameMode
 {
-	HUNT("Hunt"),
-	CLASSIC("Classic");
+	HUNT("Hunt");
 
 	private final String label;
 

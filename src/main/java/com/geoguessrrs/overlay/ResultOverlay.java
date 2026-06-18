@@ -13,8 +13,8 @@ import net.runelite.client.ui.overlay.OverlayPriority;
 
 public class ResultOverlay extends Overlay
 {
-	private static final int PANEL_WIDTH = 200;
-	private static final int PANEL_HEIGHT = 90;
+	private static final int PANEL_WIDTH = 220;
+	private static final int PANEL_HEIGHT = 104;
 	private static final Color BG_COLOR = new Color(0, 0, 0, 200);
 	private static final long SHOW_DURATION_MS = 8000;
 
@@ -67,6 +67,13 @@ public class ResultOverlay extends Overlay
 		graphics.drawString("Distance: " + result.getDistance() + " tiles", 10, 54);
 		graphics.drawString("Time:     " + result.getElapsedSeconds() + "s", 10, 70);
 		graphics.drawString("Hints:    " + result.getHintsUsed(), 10, 86);
+
+		String teleport = result.getNearestTeleport();
+		if (teleport != null)
+		{
+			graphics.setColor(new Color(0xAADDFF));
+			graphics.drawString("✈ " + teleport, 10, 102);
+		}
 
 		return new Dimension(PANEL_WIDTH, PANEL_HEIGHT);
 	}

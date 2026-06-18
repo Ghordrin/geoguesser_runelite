@@ -14,5 +14,4 @@ public class GeoLocation
 	private String difficulty;
 	private String image;
 	private List<String> tags;
-	private List<String> hints;
 }
