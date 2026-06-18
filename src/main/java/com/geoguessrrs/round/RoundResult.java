@@ -1,5 +1,6 @@
 package com.geoguessrrs.round;
 
+import java.util.List;
 import lombok.Value;
 import net.runelite.api.coords.WorldPoint;
 
@@ -13,4 +14,6 @@ public class RoundResult
 	int hintsUsed;
 	long elapsedSeconds;
 	int score;
+	List<WorldPoint> path;
+	String nearestTeleport;
 }

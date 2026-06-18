@@ -206,6 +206,15 @@ public class GeoguessrPlugin extends Plugin
 		{
 			captureOverlay.refreshPreview();
 		}
+
+		if (state == GeoguessrState.ACTIVE && activeRound != null)
+		{
+			Player player = client.getLocalPlayer();
+			if (player != null)
+			{
+				activeRound.recordPosition(player.getWorldLocation());
+			}
+		}
 	}
 
 	@Subscribe
@@ -296,6 +305,9 @@ public class GeoguessrPlugin extends Plugin
 		int distance = playerPos.distanceTo2D(target);
 		int score = scoreCalculator.calculate(distance, activeRound.getHintsUsed(), activeRound.getElapsedSeconds());
 
+		List<WorldPoint> path = new ArrayList<>(activeRound.getPath());
+		String nearestTeleport = TeleportDestinations.nearest(target);
+
 		RoundResult result = new RoundResult(
 			loc.getName(),
 			playerPos,
@@ -303,7 +315,9 @@ public class GeoguessrPlugin extends Plugin
 			distance,
 			activeRound.getHintsUsed(),
 			activeRound.getElapsedSeconds(),
-			score
+			score,
+			path,
+			nearestTeleport
 		);
 
 		// Pin both locations on the world map (must be on client thread)
