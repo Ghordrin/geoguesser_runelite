@@ -25,8 +25,9 @@ public class TargetTileOverlay extends Overlay
 
 	private final Client client;
 
-	private GeoguessrState state = GeoguessrState.IDLE;
-	private Round activeRound;
+	// Written from the client thread, read from the render thread — must be volatile.
+	private volatile GeoguessrState state = GeoguessrState.IDLE;
+	private volatile Round activeRound;
 
 	@Inject
 	TargetTileOverlay(Client client)
@@ -62,7 +63,7 @@ public class TargetTileOverlay extends Overlay
 			return null;
 		}
 
-		LocalPoint lp = LocalPoint.fromWorld(client, target);
+		LocalPoint lp = LocalPoint.fromWorld(client.getTopLevelWorldView(), target);
 		if (lp == null)
 		{
 			return null; // target outside loaded scene

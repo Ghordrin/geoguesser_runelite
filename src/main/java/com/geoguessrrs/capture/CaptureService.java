@@ -9,12 +9,13 @@ import com.geoguessrrs.locations.LocationDatabase;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.Reader;
-import java.io.Writer;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -251,8 +252,7 @@ public class CaptureService
 		// Compute padding dynamically — drawInstanceMap output size varies
 		int padX = (w - SCENE_SIZE) / 2;
 		int padY = (h - SCENE_SIZE) / 2;
-		int radius = CAPTURE_RADIUS;
-		log.debug("drawInstanceMap: {}x{} sprite padX={} padY={} radius={}", w, h, padX, padY, radius);
+		log.debug("drawInstanceMap: {}x{} sprite padX={} padY={} radius={}", w, h, padX, padY, CAPTURE_RADIUS);
 
 		BufferedImage raw = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
 		raw.setRGB(0, 0, w, h, sprite.getPixels(), 0, w);
@@ -272,9 +272,9 @@ public class CaptureService
 		int playerPixelX = sceneX * PIXELS_PER_TILE + PIXELS_PER_TILE / 2;
 		int playerPixelY = (SCENE_TILES - 1 - sceneY) * PIXELS_PER_TILE + PIXELS_PER_TILE / 2;
 
-		int diameter = radius * 2;
-		int cropX = Math.max(0, Math.min(playerPixelX - radius, SCENE_SIZE - diameter));
-		int cropY = Math.max(0, Math.min(playerPixelY - radius, SCENE_SIZE - diameter));
+		int diameter = CAPTURE_RADIUS * 2;
+		int cropX = Math.max(0, Math.min(playerPixelX - CAPTURE_RADIUS, SCENE_SIZE - diameter));
+		int cropY = Math.max(0, Math.min(playerPixelY - CAPTURE_RADIUS, SCENE_SIZE - diameter));
 		BufferedImage cropped = scene.getSubimage(cropX, cropY, diameter, diameter);
 		return CircleMask.apply(cropped);
 	}
@@ -286,7 +286,8 @@ public class CaptureService
 		ImageIO.write(image, "PNG", new File(CAPTURE_DIR, filename));
 
 		GeoLocation entry = new GeoLocation();
-		entry.setId(name.toLowerCase().replaceAll("[^a-z0-9]", "_"));
+		// Use coordinate-based ID to avoid collisions from normalised names
+		entry.setId(pos.getX() + "_" + pos.getY() + "_" + pos.getPlane());
 		entry.setName(name);
 		entry.setX(pos.getX());
 		entry.setY(pos.getY());
@@ -307,7 +308,7 @@ public class CaptureService
 
 		if (capturesFile.exists())
 		{
-			try (Reader r = new FileReader(capturesFile))
+			try (InputStreamReader r = new InputStreamReader(new FileInputStream(capturesFile), StandardCharsets.UTF_8))
 			{
 				Type listType = new TypeToken<List<GeoLocation>>() {}.getType();
 				List<GeoLocation> existing = gson.fromJson(r, listType);
@@ -337,7 +338,7 @@ public class CaptureService
 
 		entries.add(entry);
 
-		try (Writer w = new FileWriter(capturesFile))
+		try (OutputStreamWriter w = new OutputStreamWriter(new FileOutputStream(capturesFile), StandardCharsets.UTF_8))
 		{
 			gson.toJson(entries, w);
 		}

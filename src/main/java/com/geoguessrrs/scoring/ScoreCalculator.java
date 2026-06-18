@@ -1,5 +1,8 @@
 package com.geoguessrrs.scoring;
 
+import javax.inject.Singleton;
+
+@Singleton
 public class ScoreCalculator
 {
 	private static final int BASE_SCORE = 5000;

@@ -2,7 +2,7 @@ package com.geoguessrrs.overlay;
 
 import com.geoguessrrs.GeoguessrState;
 import com.geoguessrrs.GameMode;
-import com.geoguessrrs.GeoguessrConfig;
+import com.geoguessrrs.GeoguessrPlugin;
 import com.geoguessrrs.round.RoundResult;
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -35,17 +35,18 @@ import net.runelite.client.ui.overlay.OverlayPriority;
 public class WorldMapGuessOverlay extends Overlay
 {
 	private final Client client;
-	private final GeoguessrConfig config;
+	private final GeoguessrPlugin plugin;
 
-	private GeoguessrState state = GeoguessrState.IDLE;
-	private Consumer<WorldPoint> onGuess;
-	private RoundResult lastResult;
+	// Written from the client thread, read from the render thread and EDT — must be volatile.
+	private volatile GeoguessrState state = GeoguessrState.IDLE;
+	private volatile Consumer<WorldPoint> onGuess;
+	private volatile RoundResult lastResult;
 
 	@Inject
-	WorldMapGuessOverlay(Client client, GeoguessrConfig config)
+	WorldMapGuessOverlay(Client client, GeoguessrPlugin plugin)
 	{
 		this.client = client;
-		this.config = config;
+		this.plugin = plugin;
 		setPosition(OverlayPosition.DYNAMIC);
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 		setPriority(OverlayPriority.HIGH);
@@ -68,7 +69,7 @@ public class WorldMapGuessOverlay extends Overlay
 		@Override
 		public MouseEvent mouseClicked(MouseEvent e)
 		{
-			if (state != GeoguessrState.ACTIVE || config.gameMode() != GameMode.CLASSIC)
+			if (state != GeoguessrState.ACTIVE || plugin.getActiveGameMode() != GameMode.CLASSIC)
 			{
 				return e;
 			}
@@ -96,7 +97,7 @@ public class WorldMapGuessOverlay extends Overlay
 		graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
 		// Active: "click to guess" banner
-		if (state == GeoguessrState.ACTIVE && config.gameMode() == GameMode.CLASSIC)
+		if (state == GeoguessrState.ACTIVE && plugin.getActiveGameMode() == GameMode.CLASSIC)
 		{
 			int bx = mapBounds.x + mapBounds.width / 2 - 90;
 			int by = mapBounds.y + 10;

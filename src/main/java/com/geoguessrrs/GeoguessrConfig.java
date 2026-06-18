@@ -12,37 +12,38 @@ import net.runelite.client.config.Keybind;
 public interface GeoguessrConfig extends Config
 {
 	@ConfigItem(
-		keyName = "gameMode",
-		name = "Game Mode",
-		description = "Hunt: travel to the location. Classic: click on the world map.",
-		position = 0
-	)
-	default GameMode gameMode()
-	{
-		return GameMode.HUNT;
-	}
-
-	@ConfigItem(
-		keyName = "difficulty",
-		name = "Difficulty",
-		description = "Location pool difficulty filter.",
-		position = 1
-	)
-	default Difficulty difficulty()
-	{
-		return Difficulty.RANDOM;
-	}
-
-	@ConfigItem(
 		keyName = "maxHints",
 		name = "Max Hints",
 		description = "Maximum hints available per round.",
-		position = 2
+		position = 0
 	)
 	@Range(min = 0, max = 5)
 	default int maxHints()
 	{
 		return 3;
+	}
+
+	@ConfigItem(
+		keyName = "clanName",
+		name = "Clan Name",
+		description = "Your clan's unique name. Combined with the clan secret to identify your group.",
+		position = 1
+	)
+	default String clanName()
+	{
+		return "";
+	}
+
+	@ConfigItem(
+		keyName = "clanPasskey",
+		name = "Clan Secret",
+		description = "Private passkey for your clan. Only players with the same clan name AND secret share a leaderboard.",
+		position = 2,
+		secret = true
+	)
+	default String clanPasskey()
+	{
+		return "";
 	}
 
 	@ConfigItem(

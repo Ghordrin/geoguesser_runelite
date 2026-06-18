@@ -1,6 +1,6 @@
 package com.geoguessrrs.overlay;
 
-import com.geoguessrrs.GeoguessrConfig;
+import com.geoguessrrs.GeoguessrPlugin;
 import com.geoguessrrs.GeoguessrState;
 import com.geoguessrrs.GameMode;
 import com.geoguessrrs.round.Round;
@@ -31,16 +31,17 @@ public class CompassOverlay extends Overlay
 	private static final Color TEXT_COLOR = Color.WHITE;
 
 	private final Client client;
-	private final GeoguessrConfig config;
+	private final GeoguessrPlugin plugin;
 
-	private GeoguessrState state = GeoguessrState.IDLE;
-	private Round activeRound;
+	// Written from the client thread, read from the render thread — must be volatile.
+	private volatile GeoguessrState state = GeoguessrState.IDLE;
+	private volatile Round activeRound;
 
 	@Inject
-	CompassOverlay(Client client, GeoguessrConfig config)
+	CompassOverlay(Client client, GeoguessrPlugin plugin)
 	{
 		this.client = client;
-		this.config = config;
+		this.plugin = plugin;
 		setPosition(OverlayPosition.TOP_RIGHT);
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 		setPriority(OverlayPriority.MED);
@@ -55,7 +56,7 @@ public class CompassOverlay extends Overlay
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		if (state != GeoguessrState.ACTIVE || config.gameMode() != GameMode.HUNT || activeRound == null)
+		if (state != GeoguessrState.ACTIVE || plugin.getActiveGameMode() != GameMode.HUNT || activeRound == null)
 		{
 			return null;
 		}
@@ -76,8 +77,9 @@ public class CompassOverlay extends Overlay
 		int dist = pos.distanceTo2D(target);
 		int dx = target.getX() - pos.getX();
 		int dy = target.getY() - pos.getY();
-		// getCameraYaw() = 0 when camera faces north, increases counter-clockwise (0-2047)
-		// (turning right toward east gives yaw ~1536, not ~512 — hence + not -)
+		// getCameraYaw() = 0 when facing north, increases COUNTER-clockwise (0-2047)
+		// (yaw 512 = west, 1024 = south, 1536 = east)
+		// Arrow template points right, so: final angle = atan2(-dy,dx) + yaw
 		double cameraYawRad = client.getCameraYaw() * 2.0 * Math.PI / 2048.0;
 		double angle = Math.atan2(-dy, dx) + cameraYawRad;
 

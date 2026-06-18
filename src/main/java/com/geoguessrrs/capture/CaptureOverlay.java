@@ -5,8 +5,6 @@ import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import com.geoguessrrs.Difficulty;
-import com.geoguessrrs.GeoguessrConfig;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -21,21 +19,14 @@ import net.runelite.client.ui.overlay.OverlayPriority;
 @Slf4j
 public class CaptureOverlay extends Overlay
 {
-	private static final int PREVIEW_SIZE   = 100;
-	private static final int SCENE_TILES    = 104;
+	private static final int PREVIEW_SIZE    = 100;
+	private static final int SCENE_TILES     = 104;
 	private static final int PIXELS_PER_TILE = 4;
-	private static final int SCENE_SIZE     = SCENE_TILES * PIXELS_PER_TILE; // 416
-
-	// Tile-radius per difficulty (at 4 px/tile): easy=18 tiles, medium=11, hard=7
-	private static final int RADIUS_EASY   = 44;
-	private static final int RADIUS_MEDIUM = 36;
-	private static final int RADIUS_HARD   = 26;
+	private static final int SCENE_SIZE      = SCENE_TILES * PIXELS_PER_TILE; // 416
+	private static final int CAPTURE_RADIUS  = 44;
 
 	@Inject
 	private Client client;
-
-	@Inject
-	private GeoguessrConfig config;
 
 	private static final int ICON_REFRESH_TICKS = 10;
 
@@ -45,10 +36,9 @@ public class CaptureOverlay extends Overlay
 
 
 	@Inject
-	CaptureOverlay(Client client, GeoguessrConfig config)
+	CaptureOverlay(Client client)
 	{
 		this.client = client;
-		this.config = config;
 		setPosition(OverlayPosition.TOP_RIGHT);
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 		setPriority(OverlayPriority.LOW);
@@ -79,25 +69,21 @@ public class CaptureOverlay extends Overlay
 			return;
 		}
 
-		// Compute padding dynamically — drawInstanceMap output size varies
 		int padX = (w - SCENE_SIZE) / 2;
 		int padY = (h - SCENE_SIZE) / 2;
 
 		LocalPoint lp = player.getLocalLocation();
 		int sceneX = lp.getSceneX();
 		int sceneY = lp.getSceneY();
-		// Scene Y=0 is south; image row 0 is north — flip Y
 		int playerPixelX = sceneX * PIXELS_PER_TILE + PIXELS_PER_TILE / 2;
 		int playerPixelY = (SCENE_TILES - 1 - sceneY) * PIXELS_PER_TILE + PIXELS_PER_TILE / 2;
 
-		int radius = radiusForDifficulty();
 		log.debug("drawInstanceMap: {}x{} sprite padX={} padY={} sceneX={} sceneY={} px={} py={} radius={}",
-			w, h, padX, padY, sceneX, sceneY, playerPixelX, playerPixelY, radius);
+			w, h, padX, padY, sceneX, sceneY, playerPixelX, playerPixelY, CAPTURE_RADIUS);
 
 		BufferedImage raw = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
 		raw.setRGB(0, 0, w, h, sprite.getPixels(), 0, w);
 
-		// Rebuild icon layer at most once every ICON_REFRESH_TICKS ticks
 		int tick = client.getTickCount();
 		if (cachedIconLayer == null || (tick - iconLayerTick) >= ICON_REFRESH_TICKS)
 		{
@@ -108,28 +94,17 @@ public class CaptureOverlay extends Overlay
 			iconLayerTick = tick;
 		}
 
-		// Composite: fresh terrain + cached icons
 		BufferedImage scene = new BufferedImage(SCENE_SIZE, SCENE_SIZE, BufferedImage.TYPE_INT_ARGB);
 		Graphics2D sceneG = scene.createGraphics();
 		sceneG.drawImage(raw.getSubimage(padX, padY, SCENE_SIZE, SCENE_SIZE), 0, 0, null);
 		sceneG.drawImage(cachedIconLayer, 0, 0, null);
 		sceneG.dispose();
 
-		int diameter = radius * 2;
-		int cropX = Math.max(0, Math.min(playerPixelX - radius, SCENE_SIZE - diameter));
-		int cropY = Math.max(0, Math.min(playerPixelY - radius, SCENE_SIZE - diameter));
+		int diameter = CAPTURE_RADIUS * 2;
+		int cropX = Math.max(0, Math.min(playerPixelX - CAPTURE_RADIUS, SCENE_SIZE - diameter));
+		int cropY = Math.max(0, Math.min(playerPixelY - CAPTURE_RADIUS, SCENE_SIZE - diameter));
 		BufferedImage cropped = scene.getSubimage(cropX, cropY, diameter, diameter);
 		cachedPreview = CircleMask.apply(cropped);
-	}
-
-	private int radiusForDifficulty()
-	{
-		switch (config.difficulty())
-		{
-			case EASY:  return RADIUS_EASY;
-			case HARD:  return RADIUS_HARD;
-			default:    return RADIUS_MEDIUM;
-		}
 	}
 
 	@Override

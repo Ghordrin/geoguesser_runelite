@@ -8,19 +8,15 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.io.FileReader;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.Reader;
 import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Random;
-import java.util.Set;
-import java.util.stream.Collectors;
 import javax.imageio.ImageIO;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -36,9 +32,6 @@ public class LocationDatabase
 	private Gson gson;
 
 	private List<GeoLocation> allLocations = new ArrayList<>();
-	private final Random random = new Random();
-	private String lastPickedId = null;
-	private final List<String> shuffleQueue = new ArrayList<>();
 
 	public void load()
 	{
@@ -57,7 +50,7 @@ public class LocationDatabase
 				return;
 			}
 			Type listType = new TypeToken<List<GeoLocation>>() {}.getType();
-			List<GeoLocation> loaded = gson.fromJson(new InputStreamReader(is), listType);
+			List<GeoLocation> loaded = gson.fromJson(new InputStreamReader(is, StandardCharsets.UTF_8), listType);
 			if (loaded != null)
 			{
 				allLocations = loaded;
@@ -77,7 +70,7 @@ public class LocationDatabase
 		{
 			return;
 		}
-		try (Reader r = new FileReader(capturesFile))
+		try (InputStreamReader r = new InputStreamReader(new FileInputStream(capturesFile), StandardCharsets.UTF_8))
 		{
 			Type listType = new TypeToken<List<GeoLocation>>() {}.getType();
 			List<GeoLocation> captured = gson.fromJson(r, listType);
@@ -91,47 +84,6 @@ public class LocationDatabase
 		{
 			log.error("Failed to load captured locations", e);
 		}
-	}
-
-	public GeoLocation pickRandom()
-	{
-		if (allLocations.isEmpty())
-		{
-			log.warn("No locations available");
-			return null;
-		}
-		if (allLocations.size() == 1)
-		{
-			lastPickedId = allLocations.get(0).getId();
-			return allLocations.get(0);
-		}
-
-		// Keep the queue valid as the pool grows (new captures added mid-session)
-		Set<String> validIds = allLocations.stream().map(GeoLocation::getId).collect(Collectors.toSet());
-		shuffleQueue.removeIf(id -> !validIds.contains(id));
-
-		// Refill when exhausted — shuffle so every location is seen before any repeats
-		if (shuffleQueue.isEmpty())
-		{
-			List<String> ids = new ArrayList<>(validIds);
-			Collections.shuffle(ids, random);
-			// Don't start the new cycle with the location just shown
-			if (ids.size() > 1 && ids.get(0).equals(lastPickedId))
-			{
-				Collections.swap(ids, 0, 1);
-			}
-			shuffleQueue.addAll(ids);
-			log.debug("Refilled location queue: {} entries", shuffleQueue.size());
-		}
-
-		String nextId = shuffleQueue.remove(0);
-		GeoLocation picked = allLocations.stream()
-			.filter(l -> l.getId().equals(nextId))
-			.findFirst()
-			.orElse(allLocations.get(0));
-		lastPickedId = picked.getId();
-		log.info("Picked '{}' ({} left in queue)", picked.getName(), shuffleQueue.size());
-		return picked;
 	}
 
 	/** Loads the PNG for a location — checks capture dir on disk first, then bundled JAR resources. */
