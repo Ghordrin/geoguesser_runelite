@@ -61,13 +61,9 @@ The **result overlay** (top-centre of screen) shows your score, distance, time, 
 
 ---
 
-## Game Modes
+## How to Play
 
-### Hunt Mode (default)
-Navigate to the location on foot. A compass overlay in the top-right shows a rotating arrow pointing toward the target (relative to camera yaw) and the straight-line distance. Press **Guess Here!** when you are standing where you think the target is.
-
-### Classic Mode
-Open the world map and click the tile you think matches the minimap screenshot. Your click is recorded immediately as your guess.
+Navigate to the location on foot. A compass overlay in the top-right shows a rotating arrow pointing toward the target (relative to camera yaw) and the straight-line distance. Press **Guess Here!** in the plugin panel when you are standing where you think the target is.
 
 ---
 
@@ -90,7 +86,6 @@ For each location you have played, your best score, distance, and time are track
 
 | Setting | Default | Description |
 |---|---|---|
-| Game Mode | Hunt | Hunt (walk there) or Classic (click world map) |
 | Max Hints | 3 | Number of zoom-out reveals available per round (0–3) |
 | Show Distance | On | Show tile distance in the hunt compass overlay |
 | Clan Name | — | Clan name for leaderboard scoping |
