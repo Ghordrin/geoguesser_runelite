@@ -1,9 +1,15 @@
 package com.geoguessrrs.capture;
 
+import com.geoguessrrs.GeoguessrConfig;
+import java.awt.AWTException;
+import java.awt.Canvas;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.Robot;
 import java.awt.image.BufferedImage;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -19,26 +25,30 @@ import net.runelite.client.ui.overlay.OverlayPriority;
 @Slf4j
 public class CaptureOverlay extends Overlay
 {
-	private static final int PREVIEW_SIZE    = 100;
-	private static final int SCENE_TILES     = 104;
-	private static final int PIXELS_PER_TILE = 4;
-	private static final int SCENE_SIZE      = SCENE_TILES * PIXELS_PER_TILE;
-	private static final int CAPTURE_RADIUS  = 44;
-	private static final int ICON_REFRESH_TICKS = 10;
+	private static final int PREVIEW_SIZE        = 100;
+	private static final int SCENE_TILES         = 104;
+	private static final int PIXELS_PER_TILE     = 4;
+	private static final int SCENE_SIZE          = SCENE_TILES * PIXELS_PER_TILE;
+	private static final int CAPTURE_RADIUS      = 44;
+	private static final int ICON_REFRESH_TICKS  = 10;
+	private static final int VIEWPORT_REFRESH_TICKS = 30; // ~18 s
 
 	private final Client client;
 	private final BatchCaptureManager batchManager;
+	private final GeoguessrConfig config;
 
 	private BufferedImage cachedPreview;
 	private BufferedImage cachedIconLayer;
-	private int iconLayerTick = Integer.MIN_VALUE;
+	private int iconLayerTick     = Integer.MIN_VALUE;
+	private int viewportPreviewTick = Integer.MIN_VALUE;
 	private volatile int batchDistance = -1;
 
 	@Inject
-	CaptureOverlay(Client client, BatchCaptureManager batchManager)
+	CaptureOverlay(Client client, BatchCaptureManager batchManager, GeoguessrConfig config)
 	{
 		this.client       = client;
 		this.batchManager = batchManager;
+		this.config       = config;
 		setPosition(OverlayPosition.TOP_RIGHT);
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 		setPriority(OverlayPriority.LOW);
@@ -50,8 +60,22 @@ public class CaptureOverlay extends Overlay
 		this.batchDistance = distance;
 	}
 
-	/** Called from onGameTick to refresh the minimap preview (not every frame). */
+	/** Called from onGameTick to refresh the preview (not every frame). */
 	public void refreshPreview()
+	{
+		if (config.captureViewport())
+		{
+			refreshViewportPreview();
+		}
+		else
+		{
+			refreshMinimapPreview();
+		}
+	}
+
+	// ── Preview implementations ───────────────────────────────────────────────
+
+	private void refreshMinimapPreview()
 	{
 		SpritePixels sprite = client.drawInstanceMap(client.getTopLevelWorldView().getPlane());
 		if (sprite == null) { cachedPreview = null; return; }
@@ -95,6 +119,46 @@ public class CaptureOverlay extends Overlay
 		cachedPreview = CircleMask.apply(scene.getSubimage(cropX, cropY, diameter, diameter));
 	}
 
+	/**
+	 * Captures the game viewport via Robot every VIEWPORT_REFRESH_TICKS ticks and
+	 * crops it to the same initial-hint radius the player would see in round 1.
+	 * The overlay UI itself will be visible in the preview — accepted artefact.
+	 */
+	private void refreshViewportPreview()
+	{
+		int tick = client.getTickCount();
+		if (cachedPreview != null && (tick - viewportPreviewTick) < VIEWPORT_REFRESH_TICKS) return;
+
+		try
+		{
+			Canvas canvas = client.getCanvas();
+			Point loc = canvas.getLocationOnScreen();
+			int w = client.getCanvasWidth();
+			int h = client.getCanvasHeight();
+			if (w <= 0 || h <= 0) { cachedPreview = null; return; }
+
+			BufferedImage full = new Robot().createScreenCapture(new Rectangle(loc.x, loc.y, w, h));
+
+			// Match the same proportional crop startRound() applies: 30% of max radius
+			int maxR    = Math.min(w, h) / 2;
+			int initialR = Math.max(26, maxR * 3 / 10);
+			int diam    = initialR * 2;
+			int cropX   = Math.max(0, w / 2 - initialR);
+			int cropY   = Math.max(0, h / 2 - initialR);
+			diam = Math.min(diam, Math.min(w - cropX, h - cropY));
+
+			cachedPreview = CircleMask.apply(full.getSubimage(cropX, cropY, diam, diam));
+			viewportPreviewTick = tick;
+		}
+		catch (AWTException e)
+		{
+			log.debug("Viewport preview capture failed", e);
+			cachedPreview = null;
+		}
+	}
+
+	// ── Rendering ─────────────────────────────────────────────────────────────
+
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
@@ -104,7 +168,7 @@ public class CaptureOverlay extends Overlay
 		{
 			graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 			graphics.drawImage(cachedPreview, 0, 0, PREVIEW_SIZE, PREVIEW_SIZE, null);
-			graphics.setColor(Color.YELLOW);
+			graphics.setColor(config.captureViewport() ? Color.GREEN : Color.YELLOW);
 			graphics.drawOval(0, 0, PREVIEW_SIZE - 1, PREVIEW_SIZE - 1);
 			y = PREVIEW_SIZE + 2;
 		}
