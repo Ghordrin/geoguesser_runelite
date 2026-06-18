@@ -411,11 +411,14 @@ public class GeoguessrPlugin extends Plugin
 
 	private void debugResetDaily()
 	{
-		dailyStore.reset();
+		dailyStore.advanceDev();
 		dailyStore.loadOrReset();
 		setState(GeoguessrState.IDLE, null);
 		SwingUtilities.invokeLater(() ->
-			panel.updateDailyState(dailyStore.getAttemptsUsed(), dailyStore.isExhausted(), dailyStore.getAttempts()));
+		{
+			panel.updateDailyState(dailyStore.getAttemptsUsed(), dailyStore.isExhausted(), dailyStore.getAttempts());
+			panel.updateDevCycle(dailyStore.getDevOffset());
+		});
 	}
 
 	private void clearResultPin()

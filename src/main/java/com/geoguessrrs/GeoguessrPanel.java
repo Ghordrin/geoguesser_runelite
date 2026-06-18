@@ -66,6 +66,9 @@ public class GeoguessrPanel extends PluginPanel
 	private final JPanel  pbRowsPanel    = new JPanel();
 	private final JButton pbToggleButton = new JButton("Personal Bests ▼");
 
+	// ── Dev section ──────────────────────────────────────────────────────────
+	private final JButton devCycleButton = new JButton("[DEV] Next 4 locations  (cycle 1)");
+
 	// ── Callbacks ────────────────────────────────────────────────────────────
 	private Runnable             onStartRound;
 	private Runnable             onGuess;
@@ -312,16 +315,21 @@ public class GeoguessrPanel extends PluginPanel
 	private JPanel buildDebugSection()
 	{
 		JPanel card = card();
-		JButton resetBtn = new JButton("[DEV] Reset Daily");
-		resetBtn.setBackground(new Color(0x8B0000));
-		resetBtn.setForeground(Color.WHITE);
-		resetBtn.setFocusPainted(false);
-		resetBtn.setFont(new Font("Arial", Font.PLAIN, 11));
-		resetBtn.setAlignmentX(CENTER_ALIGNMENT);
-		resetBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
-		resetBtn.addActionListener(e -> { if (onDebugReset != null) onDebugReset.run(); });
-		card.add(resetBtn);
+		devCycleButton.setBackground(new Color(0x8B0000));
+		devCycleButton.setForeground(Color.WHITE);
+		devCycleButton.setFocusPainted(false);
+		devCycleButton.setFont(new Font("Arial", Font.PLAIN, 11));
+		devCycleButton.setAlignmentX(CENTER_ALIGNMENT);
+		devCycleButton.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+		devCycleButton.addActionListener(e -> { if (onDebugReset != null) onDebugReset.run(); });
+		card.add(devCycleButton);
 		return card;
+	}
+
+	public void updateDevCycle(int offset)
+	{
+		SwingUtilities.invokeLater(() ->
+			devCycleButton.setText("[DEV] Next 4 locations  (cycle " + (offset + 1) + ")"));
 	}
 
 	// =========================================================================

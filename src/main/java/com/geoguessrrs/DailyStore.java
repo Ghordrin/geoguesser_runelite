@@ -19,9 +19,10 @@ public class DailyStore
 {
 	public static final int MAX_ATTEMPTS = 4;
 
-	private static final String CONFIG_GROUP  = "geoguessrrs";
-	private static final String KEY_DATE      = "daily.date";
-	private static final String KEY_ATTEMPTS  = "daily.attempts";
+	private static final String CONFIG_GROUP    = "geoguessrrs";
+	private static final String KEY_DATE        = "daily.date";
+	private static final String KEY_ATTEMPTS    = "daily.attempts";
+	private static final String KEY_DEV_OFFSET  = "daily.devOffset";
 
 	@Value
 	public static class DailyAttempt
@@ -36,6 +37,7 @@ public class DailyStore
 	private ConfigManager configManager;
 
 	private final List<DailyAttempt> attempts = new ArrayList<>();
+	private int devOffset = 0;
 
 	/** Call on plugin startup. Wipes stored state if the calendar day has changed. */
 	public void loadOrReset()
@@ -86,6 +88,10 @@ public class DailyStore
 			}
 			log.debug("Loaded {} daily attempt(s) for {}", attempts.size(), today);
 		}
+
+		String rawOffset = configManager.getConfiguration(CONFIG_GROUP, KEY_DEV_OFFSET);
+		try { devOffset = rawOffset != null ? Integer.parseInt(rawOffset) : 0; }
+		catch (NumberFormatException e) { devOffset = 0; }
 	}
 
 	/**
@@ -98,7 +104,7 @@ public class DailyStore
 		if (locations.isEmpty()) return null;
 		List<Integer> indices = new ArrayList<>();
 		for (int i = 0; i < locations.size(); i++) indices.add(i);
-		Collections.shuffle(indices, new Random(LocalDate.now().toEpochDay()));
+		Collections.shuffle(indices, new Random(LocalDate.now().toEpochDay() + devOffset));
 		return locations.get(indices.get(roundIndex % locations.size()));
 	}
 
@@ -118,14 +124,28 @@ public class DailyStore
 	public int                 getAttemptsUsed()       { return attempts.size(); }
 	public int                 getAttemptsRemaining()  { return Math.max(0, MAX_ATTEMPTS - attempts.size()); }
 	public boolean             isExhausted()           { return attempts.size() >= MAX_ATTEMPTS; }
+	public int                 getDevOffset()          { return devOffset; }
 
-	/** Clears all stored daily state. Next loadOrReset() starts fresh for today. */
+	/** Clears attempts and advances to the next dev seed, showing 4 new locations. */
+	public void advanceDev()
+	{
+		attempts.clear();
+		devOffset++;
+		configManager.unsetConfiguration(CONFIG_GROUP, KEY_DATE);
+		configManager.unsetConfiguration(CONFIG_GROUP, KEY_ATTEMPTS);
+		configManager.setConfiguration(CONFIG_GROUP, KEY_DEV_OFFSET, String.valueOf(devOffset));
+		log.debug("Dev cycle advanced to offset {}", devOffset);
+	}
+
+	/** Clears all stored daily state including the dev offset. */
 	public void reset()
 	{
 		attempts.clear();
+		devOffset = 0;
 		configManager.unsetConfiguration(CONFIG_GROUP, KEY_DATE);
 		configManager.unsetConfiguration(CONFIG_GROUP, KEY_ATTEMPTS);
-		log.debug("Daily state reset for debugging");
+		configManager.unsetConfiguration(CONFIG_GROUP, KEY_DEV_OFFSET);
+		log.debug("Daily state fully reset");
 	}
 
 	private void persist()
