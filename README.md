@@ -99,11 +99,14 @@ For each location you have played, your best score, distance, and time are track
 
 The capture tool is only available in RuneLite developer mode (`--developer-mode` flag). It is not exposed to normal users.
 
+### Single capture (manual)
+
 1. Enable **Capture Mode** in the plugin config.
-2. Stand on any tile you want to add.
+2. Stand on the tile you want to add.
 3. Press **Shift+G** (configurable).
 4. Enter a name in the dialog that appears.
-5. The minimap PNG and JSON entry are saved to:
+
+Files are saved to:
 
 ```
 %USERPROFILE%\.runelite\geoguessr-rs\
@@ -112,6 +115,39 @@ The capture tool is only available in RuneLite developer mode (`--developer-mode
 ```
 
 Capturing the same tile twice is detected and skipped. Captures are loaded into the location pool automatically on next plugin start.
+
+### Viewport mode
+
+Enable **Capture Viewport** in the plugin config to capture the full game viewport instead of the minimap. Viewport screenshots look like real GeoGuessr — isometric 3D game view rather than a top-down tile map. The hint system still applies: the image is cropped progressively to reveal more context across hints.
+
+Hints for viewport images use the same proportional zoom-out logic as minimap images, so no configuration changes are needed.
+
+### Batch capture
+
+To mass-produce captures, create a file at:
+
+```
+%USERPROFILE%\.runelite\geoguessr-rs\batch_coords.txt
+```
+
+Format — one location per line, lines starting with `#` are ignored:
+
+```
+# name,x,y[,plane]
+Grand Exchange,3165,3487,0
+Varrock Square,3210,3424,0
+Lumbridge Castle,3222,3219,0
+```
+
+When a batch file is present the capture overlay shows the current target, its name, and how many tiles away you are. Press **Shift+G** when you arrive and the location is saved automatically with the preset name — no dialog. The overlay then advances to the next target.
+
+Workflow:
+
+1. Prepare `batch_coords.txt` with your coordinate list (hundreds of lines is fine).
+2. Start RuneLite in dev mode with **Capture Mode** on.
+3. Teleport or walk to each location (fairy rings, spirit trees, and teleport tablets cover most of the map).
+4. When the overlay shows ≤ 5 tiles, press **Shift+G** — saved and advanced automatically.
+5. Duplicate coordinates are silently skipped.
 
 ---
 

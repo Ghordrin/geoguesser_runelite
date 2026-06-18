@@ -22,63 +22,53 @@ public class CaptureOverlay extends Overlay
 	private static final int PREVIEW_SIZE    = 100;
 	private static final int SCENE_TILES     = 104;
 	private static final int PIXELS_PER_TILE = 4;
-	private static final int SCENE_SIZE      = SCENE_TILES * PIXELS_PER_TILE; // 416
+	private static final int SCENE_SIZE      = SCENE_TILES * PIXELS_PER_TILE;
 	private static final int CAPTURE_RADIUS  = 44;
+	private static final int ICON_REFRESH_TICKS = 10;
 
 	private final Client client;
-
-	private static final int ICON_REFRESH_TICKS = 10;
+	private final BatchCaptureManager batchManager;
 
 	private BufferedImage cachedPreview;
 	private BufferedImage cachedIconLayer;
 	private int iconLayerTick = Integer.MIN_VALUE;
-
+	private volatile int batchDistance = -1;
 
 	@Inject
-	CaptureOverlay(Client client)
+	CaptureOverlay(Client client, BatchCaptureManager batchManager)
 	{
-		this.client = client;
+		this.client       = client;
+		this.batchManager = batchManager;
 		setPosition(OverlayPosition.TOP_RIGHT);
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 		setPriority(OverlayPriority.LOW);
 	}
 
-	/** Called from onGameTick to refresh the preview (not every frame). */
+	/** Called from onGameTick (client thread) to update the distance-to-batch-target indicator. */
+	public void setBatchDistance(int distance)
+	{
+		this.batchDistance = distance;
+	}
+
+	/** Called from onGameTick to refresh the minimap preview (not every frame). */
 	public void refreshPreview()
 	{
 		SpritePixels sprite = client.drawInstanceMap(client.getTopLevelWorldView().getPlane());
-		if (sprite == null)
-		{
-			cachedPreview = null;
-			return;
-		}
+		if (sprite == null) { cachedPreview = null; return; }
 
 		int w = sprite.getWidth();
 		int h = sprite.getHeight();
-		if (w < SCENE_SIZE || h < SCENE_SIZE)
-		{
-			cachedPreview = null;
-			return;
-		}
+		if (w < SCENE_SIZE || h < SCENE_SIZE) { cachedPreview = null; return; }
 
 		Player player = client.getLocalPlayer();
-		if (player == null)
-		{
-			cachedPreview = null;
-			return;
-		}
+		if (player == null) { cachedPreview = null; return; }
 
 		int padX = (w - SCENE_SIZE) / 2;
 		int padY = (h - SCENE_SIZE) / 2;
 
 		LocalPoint lp = player.getLocalLocation();
-		int sceneX = lp.getSceneX();
-		int sceneY = lp.getSceneY();
-		int playerPixelX = sceneX * PIXELS_PER_TILE + PIXELS_PER_TILE / 2;
-		int playerPixelY = (SCENE_TILES - 1 - sceneY) * PIXELS_PER_TILE + PIXELS_PER_TILE / 2;
-
-		log.debug("drawInstanceMap: {}x{} sprite padX={} padY={} sceneX={} sceneY={} px={} py={} radius={}",
-			w, h, padX, padY, sceneX, sceneY, playerPixelX, playerPixelY, CAPTURE_RADIUS);
+		int playerPixelX = lp.getSceneX() * PIXELS_PER_TILE + PIXELS_PER_TILE / 2;
+		int playerPixelY = (SCENE_TILES - 1 - lp.getSceneY()) * PIXELS_PER_TILE + PIXELS_PER_TILE / 2;
 
 		BufferedImage raw = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
 		raw.setRGB(0, 0, w, h, sprite.getPixels(), 0, w);
@@ -102,26 +92,46 @@ public class CaptureOverlay extends Overlay
 		int diameter = CAPTURE_RADIUS * 2;
 		int cropX = Math.max(0, Math.min(playerPixelX - CAPTURE_RADIUS, SCENE_SIZE - diameter));
 		int cropY = Math.max(0, Math.min(playerPixelY - CAPTURE_RADIUS, SCENE_SIZE - diameter));
-		BufferedImage cropped = scene.getSubimage(cropX, cropY, diameter, diameter);
-		cachedPreview = CircleMask.apply(cropped);
+		cachedPreview = CircleMask.apply(scene.getSubimage(cropX, cropY, diameter, diameter));
 	}
 
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		if (cachedPreview == null)
+		int y = 0;
+
+		if (cachedPreview != null)
 		{
-			return null;
+			graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+			graphics.drawImage(cachedPreview, 0, 0, PREVIEW_SIZE, PREVIEW_SIZE, null);
+			graphics.setColor(Color.YELLOW);
+			graphics.drawOval(0, 0, PREVIEW_SIZE - 1, PREVIEW_SIZE - 1);
+			y = PREVIEW_SIZE + 2;
 		}
 
-		graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-		graphics.drawImage(cachedPreview, 0, 0, PREVIEW_SIZE, PREVIEW_SIZE, null);
+		BatchCaptureManager.BatchTarget bt = batchManager.getCurrent();
+		if (bt != null)
+		{
+			int idx   = batchManager.getCurrentIndex() + 1;
+			int total = batchManager.getTotal();
+
+			graphics.setColor(Color.CYAN);
+			graphics.drawString(String.format("BATCH %d/%d", idx, total), 2, y + 10);
+
+			String name = bt.getName();
+			if (name.length() > 16) name = name.substring(0, 15) + "…";
+			graphics.drawString(name, 2, y + 22);
+
+			if (batchDistance >= 0)
+			{
+				graphics.setColor(batchDistance <= 5 ? Color.GREEN : Color.YELLOW);
+				graphics.drawString(batchDistance + " tiles", 2, y + 34);
+			}
+			return new Dimension(PREVIEW_SIZE, y + 38);
+		}
 
 		graphics.setColor(Color.YELLOW);
-		graphics.drawOval(0, 0, PREVIEW_SIZE - 1, PREVIEW_SIZE - 1);
-		graphics.setColor(Color.YELLOW);
-		graphics.drawString("CAPTURE MODE", 2, PREVIEW_SIZE + 12);
-
-		return new Dimension(PREVIEW_SIZE, PREVIEW_SIZE + 14);
+		graphics.drawString("CAPTURE MODE", 2, y + 12);
+		return new Dimension(PREVIEW_SIZE, y + 14);
 	}
 }

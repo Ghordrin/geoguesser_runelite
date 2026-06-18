@@ -1,6 +1,7 @@
 package com.geoguessrrs;
 
 import com.google.inject.Provides;
+import com.geoguessrrs.capture.BatchCaptureManager;
 import com.geoguessrrs.capture.CircleMask;
 import com.geoguessrrs.capture.CaptureOverlay;
 import com.geoguessrrs.capture.CaptureService;
@@ -76,6 +77,7 @@ public class GeoguessrPlugin extends Plugin
 	@Inject private ClientThread clientThread;
 	@Inject private CaptureService captureService;
 	@Inject private CaptureOverlay captureOverlay;
+	@Inject private BatchCaptureManager batchManager;
 	@Inject private CompassOverlay compassOverlay;
 	@Inject private ResultOverlay resultOverlay;
 	@Inject private TargetTileOverlay targetTileOverlay;
@@ -146,6 +148,7 @@ public class GeoguessrPlugin extends Plugin
 		if (DevMode.isEnabled())
 		{
 			overlayManager.add(captureOverlay);
+			batchManager.load();
 			captureHotkeyListener = new HotkeyListener(() -> config.captureHotkey())
 			{
 				@Override
@@ -201,6 +204,21 @@ public class GeoguessrPlugin extends Plugin
 		if (DevMode.isEnabled() && config.captureMode())
 		{
 			captureOverlay.refreshPreview();
+
+			BatchCaptureManager.BatchTarget bt = batchManager.getCurrent();
+			if (bt != null)
+			{
+				Player player = client.getLocalPlayer();
+				if (player != null)
+				{
+					WorldPoint btp = new WorldPoint(bt.getX(), bt.getY(), bt.getPlane());
+					captureOverlay.setBatchDistance(player.getWorldLocation().distanceTo2D(btp));
+				}
+			}
+			else
+			{
+				captureOverlay.setBatchDistance(-1);
+			}
 		}
 
 		if (state == GeoguessrState.ACTIVE && activeRound != null)
@@ -261,9 +279,13 @@ public class GeoguessrPlugin extends Plugin
 			return;
 		}
 
-		// All rounds start with the same tight crop; hints progressively reveal more
+		// All rounds start with a tight crop; hints progressively reveal more.
+		// Initial radius is 30% of max so it scales correctly for both minimap (88px)
+		// and viewport (800px+) captures.
 		BufferedImage fullImage    = locationDatabase.loadClueImage(location);
-		BufferedImage initialImage = cropToRadius(fullImage, 26); // ~30% of 88px or 176px source
+		int maxR       = fullImage != null ? fullImage.getWidth() / 2 : 44;
+		int initialR   = Math.max(26, maxR * 3 / 10);
+		BufferedImage initialImage = cropToRadius(fullImage, initialR);
 		BufferedImage[] hintImages = buildHintImages(fullImage);
 
 		Round round = new Round(location, initialImage, hintImages);

@@ -71,11 +71,22 @@ public interface GeoguessrConfig extends Config
 	@ConfigItem(
 		keyName = "captureHotkey",
 		name = "Capture Hotkey",
-		description = "Hotkey to capture the current minimap as a location screenshot.",
+		description = "Hotkey to capture the current location screenshot.",
 		position = 11
 	)
 	default Keybind captureHotkey()
 	{
 		return new Keybind(KeyEvent.VK_G, InputEvent.SHIFT_DOWN_MASK);
+	}
+
+	@ConfigItem(
+		keyName = "captureViewport",
+		name = "Capture Viewport",
+		description = "Capture the full game viewport instead of the minimap. Use for creating in-game perspective screenshots.",
+		position = 12
+	)
+	default boolean captureViewport()
+	{
+		return false;
 	}
 }
