@@ -92,6 +92,7 @@ For each location you have played, your best score, distance, and time are track
 | Clan Passkey | — | Shared passkey (hashed before sending) |
 | Capture Mode | Off | Enable the capture tool and hotkey (dev only) |
 | Capture Hotkey | Shift+G | Hotkey to capture the current tile (dev only) |
+| Scout Hotkey | Shift+M | Mark current tile in batch_coords.txt without capturing (dev only) |
 
 ---
 
@@ -122,9 +123,21 @@ Enable **Capture Viewport** in the plugin config to capture the full game viewpo
 
 Hints for viewport images use the same proportional zoom-out logic as minimap images, so no configuration changes are needed.
 
+### Scout mode
+
+Scout mode lets you build a coordinate list while playing normally — no screenshots taken, just coordinates recorded.
+
+1. Enable **Capture Mode** in the config.
+2. Walk or teleport to an interesting location.
+3. Press **Shift+M** (configurable via **Scout Hotkey**).
+4. Enter a name in the dialog.
+5. The tile is appended to `batch_coords.txt` immediately.
+
+Repeat across a play session to build up a list of hundreds of locations. Then do a second pass in batch capture mode to take the actual screenshots.
+
 ### Batch capture
 
-To mass-produce captures, create a file at:
+To mass-produce captures from a pre-built coordinate list:
 
 ```
 %USERPROFILE%\.runelite\geoguessr-rs\batch_coords.txt

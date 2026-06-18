@@ -3,6 +3,7 @@ package com.geoguessrrs.capture;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -96,5 +97,25 @@ public class BatchCaptureManager
 	{
 		currentIndex = 0;
 		log.debug("Batch reset to beginning");
+	}
+
+	/**
+	 * Appends a scouted coordinate to batch_coords.txt and the in-memory list.
+	 * Does not reset the current batch index so an in-progress batch run is unaffected.
+	 */
+	public void appendScout(String name, int x, int y, int plane)
+	{
+		CaptureService.CAPTURE_DIR.mkdirs();
+		try (FileWriter fw = new FileWriter(BATCH_FILE, true))
+		{
+			fw.write(name + "," + x + "," + y + "," + plane + System.lineSeparator());
+		}
+		catch (IOException e)
+		{
+			log.error("Failed to write scout entry to {}", BATCH_FILE, e);
+			return;
+		}
+		targets.add(new BatchTarget(name, x, y, plane));
+		log.info("Scouted '{}' at ({},{},{}) — batch total now {}", name, x, y, plane, targets.size());
 	}
 }

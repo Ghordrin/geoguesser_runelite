@@ -111,6 +111,7 @@ public class GeoguessrPlugin extends Plugin
 
 	private NavigationButton navButton;
 	private HotkeyListener captureHotkeyListener;
+	private HotkeyListener scoutHotkeyListener;
 	private WorldMapPoint resultPin;
 	private WorldMapPoint guessPin;
 	private WorldMapPoint debugTargetPin;
@@ -161,6 +162,18 @@ public class GeoguessrPlugin extends Plugin
 				}
 			};
 			keyManager.registerKeyListener(captureHotkeyListener);
+			scoutHotkeyListener = new HotkeyListener(() -> config.scoutHotkey())
+			{
+				@Override
+				public void hotkeyPressed()
+				{
+					if (config.captureMode())
+					{
+						captureService.scoutPosition();
+					}
+				}
+			};
+			keyManager.registerKeyListener(scoutHotkeyListener);
 			log.info("GeoGuessr RS: capture mode available (dev build)");
 		}
 
@@ -184,6 +197,10 @@ public class GeoguessrPlugin extends Plugin
 			if (captureHotkeyListener != null)
 			{
 				keyManager.unregisterKeyListener(captureHotkeyListener);
+			}
+			if (scoutHotkeyListener != null)
+			{
+				keyManager.unregisterKeyListener(scoutHotkeyListener);
 			}
 			captureService.shutdown();
 		}

@@ -89,4 +89,15 @@ public interface GeoguessrConfig extends Config
 	{
 		return false;
 	}
+
+	@ConfigItem(
+		keyName = "scoutHotkey",
+		name = "Scout Hotkey",
+		description = "Marks your current tile as a future capture target in batch_coords.txt without taking a screenshot.",
+		position = 13
+	)
+	default Keybind scoutHotkey()
+	{
+		return new Keybind(KeyEvent.VK_M, InputEvent.SHIFT_DOWN_MASK);
+	}
 }

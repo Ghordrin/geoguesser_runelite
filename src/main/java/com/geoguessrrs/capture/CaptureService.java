@@ -299,6 +299,36 @@ public class CaptureService
 		}
 	}
 
+	/**
+	 * Entry point for the scout hotkey (EDT).
+	 * Asks for a name and appends the current tile to batch_coords.txt — no image captured.
+	 */
+	public void scoutPosition()
+	{
+		clientThread.invoke(() ->
+		{
+			WorldPoint pos = client.getLocalPlayer() != null
+				? client.getLocalPlayer().getWorldLocation()
+				: null;
+			if (pos == null) return;
+			final WorldPoint finalPos = pos;
+			SwingUtilities.invokeLater(() ->
+			{
+				String name = (String) JOptionPane.showInputDialog(
+					null,
+					"Name this location (will be added to batch_coords.txt):",
+					"Scout Location",
+					JOptionPane.PLAIN_MESSAGE,
+					null,
+					null,
+					finalPos.getX() + ", " + finalPos.getY()
+				);
+				if (name == null || name.isBlank()) return;
+				batchManager.appendScout(name.trim(), finalPos.getX(), finalPos.getY(), finalPos.getPlane());
+			});
+		});
+	}
+
 	public void shutdown()
 	{
 		executor.shutdownNow();
